@@ -12,8 +12,8 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="manifest" href="/arrowpath/manifest.webmanifest" />
     <title>ArrowPath</title>
-    <script type="module" crossorigin src="/arrowpath/assets/index-CstSiIaT.js"></script>
-    <link rel="stylesheet" crossorigin href="/arrowpath/assets/index-HZrVz30G.css">
+    <script type="module" crossorigin src="/arrowpath/assets/index-BcPjV6-T.js"></script>
+    <link rel="stylesheet" crossorigin href="/arrowpath/assets/index-Cc0mcSHp.css">
   <script id="vite-plugin-pwa:register-sw" src="/arrowpath/registerSW.js"></script></head>
   <body>
     <div id="app">
@@ -25,6 +25,7 @@
           <p class="tagline">Neon metro arrows. Clear the grid. No collisions.</p>
           <p class="progress-line">Progress: <strong id="home-progress">1 / 50</strong></p>
           <p class="progress-line" id="home-daily-meta">Daily ready</p>
+          <p class="progress-line streak-line" id="home-streak" hidden>Streak: <strong id="streak-count">0</strong></p>
           <button type="button" class="btn primary" id="btn-play">Play</button>
           <button type="button" class="btn secondary" id="btn-daily">Daily Challenge</button>
           <button type="button" class="btn secondary" id="btn-levels">Level select</button>
@@ -109,6 +110,15 @@
             <button type="button" class="btn secondary" id="btn-share">Share</button>
             <button type="button" class="btn secondary" id="btn-win-levels">Level select</button>
             <button type="button" class="btn ghost" id="btn-win-home">Home</button>
+          </div>
+        </div>
+
+        <div id="overlay-interstitial" class="overlay" hidden>
+          <div class="panel">
+            <h2>Ad placeholder (stub)</h2>
+            <p class="go-meta" id="interstitial-reason">Between-level interstitial stub — no real network ad.</p>
+            <button type="button" class="btn primary" id="btn-interstitial-continue">Continue</button>
+            <button type="button" class="btn ghost" id="btn-interstitial-dismiss">Dismiss</button>
           </div>
         </div>
 
