@@ -5,7 +5,7 @@
 **Assignee:** Software Engineer (executor)  
 **Project ID:** proj_arrowpath_001  
 **Feature pack:** `b8938d82bfaac6d18a8ea3193d7930ccb48260e0`  
-**Docs HEAD:** `f2e745cb8223aac6c706d8a2c60c28c012b6e2c1`  
+**Commit / HEAD:** `73205a3976bbcc8b12e3a36a3c2fff6229340962`  
 **Base release:** `340d670` (v0.1.0 dual-cleared) · Pages base chore `6a20eb3`  
 **PRD:** `/workspace/factory/research/PRD-arrowpath.md`  
 **BUILD:** `/workspace/factory/research/BUILD-arrowpath.md`  
