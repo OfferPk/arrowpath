@@ -12,6 +12,13 @@ export interface Settings {
   adsRemoved: boolean;
 }
 
+/** Isolated daily progress — does not advance campaign unlock/cleared. */
+export interface DailyRecord {
+  completed: boolean;
+  levelId: number;
+  finishedAt?: string;
+}
+
 const DEFAULT_PROGRESS: Progress = { unlocked: 1, cleared: [] };
 const DEFAULT_SETTINGS: Settings = { muted: false, adsRemoved: false };
 
@@ -64,4 +71,32 @@ export function isOnboarded(): boolean {
 
 export function setOnboarded(): void {
   write('onboarded', { ok: true });
+}
+
+export function getDailyRecord(dailyKey: string): DailyRecord | null {
+  try {
+    const raw = localStorage.getItem(PREFIX + `daily:${dailyKey}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<DailyRecord>;
+    if (typeof parsed.levelId !== 'number') return null;
+    return {
+      completed: Boolean(parsed.completed),
+      levelId: parsed.levelId,
+      finishedAt: parsed.finishedAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function saveDailyRecord(dailyKey: string, record: DailyRecord): void {
+  const prev = getDailyRecord(dailyKey);
+  const completed = record.completed || Boolean(prev?.completed);
+  write(`daily:${dailyKey}`, {
+    completed,
+    levelId: record.levelId,
+    finishedAt: completed
+      ? (prev?.finishedAt ?? record.finishedAt ?? new Date().toISOString())
+      : record.finishedAt,
+  });
 }

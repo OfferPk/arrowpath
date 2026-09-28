@@ -22,7 +22,9 @@
           <h1 class="logo">ArrowPath</h1>
           <p class="tagline">Neon metro arrows. Clear the grid. No collisions.</p>
           <p class="progress-line">Progress: <strong id="home-progress">1 / 50</strong></p>
+          <p class="progress-line" id="home-daily-meta">Daily ready</p>
           <button type="button" class="btn primary" id="btn-play">Play</button>
+          <button type="button" class="btn secondary" id="btn-daily">Daily Challenge</button>
           <button type="button" class="btn secondary" id="btn-levels">Level select</button>
           <button type="button" class="btn ghost" id="btn-howto">How to play</button>
           <button type="button" class="btn ghost" id="btn-settings">Settings</button>
@@ -100,8 +102,9 @@
         <div id="overlay-win" class="overlay" hidden>
           <div class="panel">
             <h2>Cleared!</h2>
-            <p class="go-meta">Neon line clear. Next station?</p>
+            <p class="go-meta" id="win-meta">Neon line clear. Next station?</p>
             <button type="button" class="btn primary" id="btn-next">Next level</button>
+            <button type="button" class="btn secondary" id="btn-share">Share</button>
             <button type="button" class="btn secondary" id="btn-win-levels">Level select</button>
             <button type="button" class="btn ghost" id="btn-win-home">Home</button>
           </div>
@@ -116,6 +119,8 @@
           </div>
         </div>
       </section>
+
+      <div id="toast" class="toast" hidden role="status"></div>
 
       <div id="a2hs" class="a2hs" hidden>
         <span>Install ArrowPath: browser menu → <strong>Add to Home Screen</strong></span>

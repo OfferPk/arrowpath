@@ -1,34 +1,30 @@
 # ArrowPath — Status
 
 **Status:** READY_FOR_QA  
-**Updated:** 2026-09-28T17:19:40+05:00 (PKT)  
+**Updated:** 2026-09-28T17:33:40+05:00 (PKT)  
 **Assignee:** Software Engineer (executor)  
 **Project ID:** proj_arrowpath_001  
-**Commit (MVP):** `82a84cc96e412871639a21baf0e75b0f0e851c68` · **HEAD:** `a2f301c44f52b6020c7bcf151fa569dfa10d8303`  
+**Commit:** `2f9fd03fcd14d85ce9e1f69efc3099869657d1d0`  
+**Base release:** `340d670` (v0.1.0 dual-cleared) · Pages base chore `6a20eb3`  
 **PRD:** `/workspace/factory/research/PRD-arrowpath.md`  
-**BUILD:** `/workspace/factory/research/BUILD-arrowpath.md`
+**BUILD:** `/workspace/factory/research/BUILD-arrowpath.md`  
+**Improve:** `/workspace/factory/inbox/IMPROVE-arrowpath-20260928-1729.md`
 
 ## Gates
 
 | Gate | Result |
 |------|--------|
-| `npm test` | **18/18 passed** (engine move/collision/undo/hint + solved fixture + levels 1–10 solvable + ads stubs) |
-| `npm run build` | **green** (tsc + vite + PWA SW; 50 levels precached) |
+| `npm test` | **26/26 passed** (engine 15 + ads 3 + daily PKT 8) |
+| `npm run build` | **green** (tsc + vite + PWA SW; base `/arrowpath/`) |
 
-## MVP delivered
+## This pack (Unreleased on top of v0.1.0)
 
-1. Neon metro Canvas PWA (Vite + TS + vite-plugin-pwa)  
-2. Engine: fire, clear off-board, collision/wall fail, win  
-3. Undo stack — **3 free / level**, then rewarded stub  
-4. **50** JSON levels (`public/levels.json`) — all solvable; walls from intro onward  
-5. Screens: Home, Play, Level select, How to play, Settings  
-6. Ads stubs wired: `showInterstitial`, `showRewarded`, `isAdsRemoved`, `purchaseRemoveAds`  
-7. Docs: README, PRODUCT, CHANGELOG 0.1.0, GUIDE-roman-urdu  
+1. **Daily Challenge (PKT)** — Home Daily + meta; deterministic levelId 1..50; `arrowpath:v1:daily:{key}` isolated from campaign  
+2. **Win Share + Continue** — share/clipboard toast; Play→Continue when progress exists  
+3. **Docs** — STATUS HEAD sync; README + GUIDE `/arrowpath/` base path; CHANGELOG Unreleased  
 
 ## Notes
 
-- Original neon metro IP — not Arrows Puzzle Escape / Easybrain branding  
-- No real AdMob / IAP SDK keys  
-- No TubeSort / WordHunt / GlowGrid mechanic drift  
-- No git push / GitHub publish (per brief)  
+- No amend of release commit; no git push (Master refreshes gh-pages after QA)  
+- Out of scope: real AdMob/IAP, level editor, leaderboards, stars, >50 levels  
 - Path: `/workspace/factory/projects/arrowpath`

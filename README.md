@@ -20,13 +20,15 @@ npm install
 npm run dev
 ```
 
-Open the printed local URL (usually `http://localhost:5173`).
+Dev server prints a local URL. With Vite `base: '/arrowpath/'`, open the **`/arrowpath/`** path (e.g. `http://localhost:5173/arrowpath/`).
 
 ```bash
 npm test          # vitest
 npm run build     # tsc + vite build → dist/
-npm run preview   # serve production build
+npm run preview   # serve production build at /arrowpath/
 ```
+
+**GitHub Pages / static host:** app is served under **`/arrowpath/`** (not site root). Asset fetches use `import.meta.env.BASE_URL`.
 
 ## Play
 
@@ -36,6 +38,8 @@ npm run preview   # serve production build
 | **Undo** | 3 free undos per level; then rewarded stub for extra |
 | **Hint** | Rewarded stub → highlight a safe next arrow |
 | **Retry** | Restart level (interstitial stub) |
+| **Daily Challenge** | One PKT (Asia/Karachi) level per day — isolated from campaign progress |
+| **Share** | Win overlay → share / copy clear text |
 
 Clear all arrows to win. Hitting another arrow or a wall fails the try.
 

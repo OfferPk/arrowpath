@@ -213,3 +213,21 @@ html, body {
 }
 .a2hs[hidden] { display: none !important; }
 .a2hs span { flex: 1; }
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 88px;
+  transform: translateX(-50%);
+  z-index: 30;
+  background: #121a2e;
+  border: 1px solid rgba(45, 226, 230, 0.4);
+  color: var(--cyan);
+  padding: 10px 16px;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  box-shadow: 0 0 24px rgba(45, 226, 230, 0.2);
+  pointer-events: none;
+}
+.toast[hidden] { display: none !important; }

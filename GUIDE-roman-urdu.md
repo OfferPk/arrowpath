@@ -32,12 +32,14 @@ ArrowPath ek **neon metro arrow puzzle** hai. Grid pe glowing arrows hote hain �
    ```bash
    npm run dev
    ```
-4. Browser mein URL kholo (jaise `http://localhost:5173`)
+4. Browser mein URL kholo — Vite `base` **`/arrowpath/`** hai, is liye path include karo
+   (jaise `http://localhost:5173/arrowpath/`). GitHub Pages pe bhi app `/arrowpath/` ke neeche serve hoti hai.
 5. Production build:
    ```bash
    npm test && npm run build
    npm run preview
    ```
+   Preview bhi `/arrowpath/` pe khulega.
 
 ## 5. Demo login (agar ho)
 
@@ -73,6 +75,22 @@ ArrowPath ek **neon metro arrow puzzle** hai. Grid pe glowing arrows hote hain �
 - **Kahan:** Play bar / fail overlay → **Retry**
 - **Kaise:** Tap
 - **Result:** Level reset; interstitial stub call
+
+
+### Daily Challenge (PKT)
+- **Kahan:** Home → **Daily Challenge**
+- **Kaise:** Asia/Karachi (UTC+5) ke aaj ke date se ek fixed level (1–50) milta hai
+- **Result:** Clear karne pe sirf daily record save — campaign unlock/cleared **nahi** badalta. Dobara tap pe "✓ completed" + Continue campaign
+
+### Continue / Play
+- **Kahan:** Home primary button
+- **Kaise:** Agar progress ho (`unlocked > 1` ya koi level clear) to label **Continue**, warna **Play**
+- **Result:** Current unlocked campaign level start
+
+### Share (win)
+- **Kahan:** Level clear overlay → **Share**
+- **Kaise:** Tap — `navigator.share` ya clipboard copy + toast
+- **Result:** Text jaise `ArrowPath — cleared level N (neon metro)`
 
 ### Settings — Sound / Remove ads
 - **Kahan:** Home → **Settings**
