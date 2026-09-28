@@ -4,7 +4,7 @@
 **Updated:** 2026-09-28T17:33:40+05:00 (PKT)  
 **Assignee:** Software Engineer (executor)  
 **Project ID:** proj_arrowpath_001  
-**Commit:** `2f9fd03fcd14d85ce9e1f69efc3099869657d1d0`  
+**Commit:**   
 **Base release:** `340d670` (v0.1.0 dual-cleared) · Pages base chore `6a20eb3`  
 **PRD:** `/workspace/factory/research/PRD-arrowpath.md`  
 **BUILD:** `/workspace/factory/research/BUILD-arrowpath.md`  
