@@ -1,10 +1,10 @@
 # ArrowPath — Status
 
 **Status:** READY_FOR_QA  
-**Updated:** 2026-09-28T17:19:21+05:00 (PKT)  
+**Updated:** 2026-09-28T17:19:40+05:00 (PKT)  
 **Assignee:** Software Engineer (executor)  
 **Project ID:** proj_arrowpath_001  
-**Commit:**   
+**Commit:** `4857abf043de348de00c7abb3c170d8b77081db6`  
 **PRD:** `/workspace/factory/research/PRD-arrowpath.md`  
 **BUILD:** `/workspace/factory/research/BUILD-arrowpath.md`
 
