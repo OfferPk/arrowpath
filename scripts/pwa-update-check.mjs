@@ -94,6 +94,55 @@ async function setVisibilityState(page, visibilityState) {
   }, visibilityState);
 }
 
+async function instrumentServiceWorkerUpdates(page) {
+  await page.evaluate(() => {
+    const prototype = ServiceWorkerRegistration.prototype;
+    const originalUpdate = prototype.update;
+    const stats = { attempts: 0, failures: 0 };
+    Object.defineProperty(window, '__arrowPathUpdateStats', {
+      configurable: true,
+      value: stats,
+    });
+    Object.defineProperty(prototype, 'update', {
+      configurable: true,
+      writable: true,
+      value: function (...args) {
+        stats.attempts += 1;
+        // Chromium can serve the worker script from cache while offline, so
+        // force a deterministic update-fetch rejection in this browser test.
+        if (!navigator.onLine) {
+          stats.failures += 1;
+          return Promise.reject(new TypeError('Service-worker update request failed while offline'));
+        }
+        return originalUpdate.apply(this, args).catch((error) => {
+          stats.failures += 1;
+          throw error;
+        });
+      },
+    });
+  });
+}
+
+async function triggerForegroundUpdateCheck(page, previousAttempts) {
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event('focus'));
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await page.waitForFunction(
+    (attempts) => window.__arrowPathUpdateStats?.attempts > attempts,
+    previousAttempts,
+    { timeout: 10000 },
+  );
+}
+
+async function waitForForegroundUpdateFailure(page, previousFailures) {
+  await page.waitForFunction(
+    (failures) => window.__arrowPathUpdateStats?.failures > failures,
+    previousFailures,
+    { timeout: 10000 },
+  );
+}
+
 async function expectReload(page, previousTimeOrigin) {
   await page.waitForFunction(
     (oldTimeOrigin) => performance.timeOrigin !== oldTimeOrigin,
@@ -129,11 +178,34 @@ try {
   await page.locator('[data-screen="home"]:not([hidden])').waitFor();
   console.log('PASS safe update handoff: waiting worker installs only after the user selects Reload to update');
 
-  // Open two active puzzle tabs before a second worker update to verify cross-tab safety.
+  // A failed offline foreground check must leave an update-free active game
+  // alone, and must not interfere with its ordinary controls.
+  await instrumentServiceWorkerUpdates(page);
   await page.locator('#btn-play').click();
   await page.locator('#board-access [role="gridcell"]').first().waitFor();
   const playTime = await page.evaluate(() => performance.timeOrigin);
   const leftBefore = await page.locator('#hud-left').textContent();
+  const noUpdateStats = await page.evaluate(() => window.__arrowPathUpdateStats);
+  await context.setOffline(true);
+  await page.waitForFunction(() => navigator.onLine === false);
+  await triggerForegroundUpdateCheck(page, noUpdateStats.attempts);
+  await waitForForegroundUpdateFailure(page, noUpdateStats.failures);
+  assert.equal(await page.locator('#pwa-update-notice:not([hidden])').count(), 0, 'a failed offline check must not invent an update notice');
+  assert.equal(await page.evaluate(() => performance.timeOrigin), playTime, 'a failed offline check must not reload the active game');
+  assert.equal(await page.locator('[data-screen="play"]:not([hidden])').count(), 1, 'the active puzzle must remain open after a failed check');
+  assert.equal(await page.locator('#hud-left').textContent(), leftBefore, 'a failed check must preserve the unfinished puzzle state');
+  await page.locator('#btn-hint').click();
+  await page.locator('#overlay-reward:not([hidden])').waitFor();
+  await page.locator('#btn-reward-cancel').click();
+  await page.locator('#overlay-reward').waitFor({ state: 'hidden' });
+  assert.equal(await page.locator('#hud-left').textContent(), leftBefore, 'game controls must remain usable without changing the puzzle');
+  await context.setOffline(false);
+  await page.waitForFunction(() => navigator.onLine === true);
+  assert.equal(await page.locator('#pwa-update-notice:not([hidden])').count(), 0, 'reconnecting after a failed check must not show a false update');
+  assert.equal(await page.evaluate(() => performance.timeOrigin), playTime, 'reconnecting must preserve the active game');
+  console.log('PASS offline check failure: no false notice or reload; the active puzzle and game controls remain usable');
+
+  // Open two active puzzle tabs before a second worker update to verify cross-tab safety.
   const secondPage = await context.newPage();
   await secondPage.goto(baseUrl, { waitUntil: 'networkidle' });
   await secondPage.locator('[data-screen="home"]:not([hidden])').waitFor();
@@ -160,6 +232,23 @@ try {
   await secondPage.locator('#pwa-update-notice:not([hidden])').waitFor({ timeout: 20000 });
   assert.equal(await page.locator('#btn-pwa-update').textContent(), 'Review update');
   assert.equal(await secondPage.locator('#btn-pwa-update').textContent(), 'Review update');
+  // An update that was already waiting remains visible through a failed offline
+  // check and is still available to the user after connectivity returns.
+  const waitingUpdateStats = await page.evaluate(() => window.__arrowPathUpdateStats);
+  await context.setOffline(true);
+  await page.waitForFunction(() => navigator.onLine === false);
+  await triggerForegroundUpdateCheck(page, waitingUpdateStats.attempts);
+  await waitForForegroundUpdateFailure(page, waitingUpdateStats.failures);
+  assert.equal(await page.locator('#pwa-update-notice:not([hidden])').count(), 1, 'a failed check must not hide an already waiting update');
+  assert.equal(await page.locator('#btn-pwa-update').textContent(), 'Review update', 'the waiting update action must remain available offline');
+  assert.equal(await page.locator('#btn-pwa-update').isDisabled(), false, 'the waiting update action must remain enabled');
+  assert.equal(await page.evaluate(() => performance.timeOrigin), playTime, 'an offline check must not interrupt a puzzle with a waiting update');
+  assert.equal(await page.locator('#hud-left').textContent(), leftBefore, 'an offline check must preserve the waiting-update puzzle state');
+  await context.setOffline(false);
+  await page.waitForFunction(() => navigator.onLine === true);
+  await page.locator('#pwa-update-notice:not([hidden])').waitFor();
+  assert.equal(await page.locator('#btn-pwa-update').isDisabled(), false, 'the waiting update must remain actionable after reconnecting');
+  console.log('PASS waiting update survives offline check: action remains available after reconnecting');
   await page.waitForTimeout(900);
   assert.equal(await page.evaluate(() => performance.timeOrigin), playTime, 'a waiting update must not interrupt active gameplay');
   assert.equal(await secondPage.evaluate(() => performance.timeOrigin), secondPageTime, 'a waiting update must not interrupt another active tab');
