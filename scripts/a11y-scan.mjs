@@ -164,6 +164,22 @@ try {
   await scan(page, 'level select');
   await page.locator('#btn-levels-back').click();
   await page.locator('#btn-settings').click();
+  const vibrationToggle = page.locator('#btn-mute');
+  assert.equal((await vibrationToggle.textContent())?.trim(), 'Vibration on', 'the feedback setting must describe haptics rather than sound');
+  await vibrationToggle.click();
+  assert.equal((await vibrationToggle.textContent())?.trim(), 'Vibration off', 'turning vibration off must update the visible label');
+  assert.deepEqual(
+    await page.evaluate(() => JSON.parse(localStorage.getItem('arrowpath:v1:settings') ?? 'null')),
+    { muted: true, adsRemoved: false },
+    'the existing saved feedback preference must be preserved when vibration is disabled',
+  );
+  await vibrationToggle.click();
+  assert.equal((await vibrationToggle.textContent())?.trim(), 'Vibration on');
+  assert.deepEqual(
+    await page.evaluate(() => JSON.parse(localStorage.getItem('arrowpath:v1:settings') ?? 'null')),
+    { muted: false, adsRemoved: false },
+    'turning vibration back on must preserve the existing preference schema',
+  );
   await scan(page, 'settings');
   await page.locator('#btn-settings-back').click();
   await page.locator('[data-screen="home"]:not([hidden])').waitFor();

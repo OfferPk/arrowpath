@@ -307,7 +307,7 @@ function updateHome(): void {
 
 function updateSettingsUi(): void {
   const muteBtn = document.getElementById('btn-mute')!;
-  muteBtn.textContent = muted ? '🔇 Sound off' : '🔊 Sound on';
+  muteBtn.textContent = muted ? 'Vibration off' : 'Vibration on';
   const ads = document.getElementById('ads-status')!;
   ads.textContent = isAdsRemoved()
     ? 'Ads: removed (local stub flag)'
