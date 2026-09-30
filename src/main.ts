@@ -590,6 +590,19 @@ function closeLevelSelect(): void {
   }
 }
 
+function closeHowTo(): void {
+  setOnboarded();
+  updateHome();
+  showScreen('home');
+  document.getElementById('btn-howto')?.focus({ preventScroll: true });
+}
+
+function closeSettings(): void {
+  updateHome();
+  showScreen('home');
+  document.getElementById('btn-settings')?.focus({ preventScroll: true });
+}
+
 function configureWinOverlay(): void {
   const nextBtn = document.getElementById('btn-next') as HTMLButtonElement;
   const winMeta = document.getElementById('win-meta')!;
@@ -1116,10 +1129,7 @@ function wire(): void {
     document.getElementById('howto-title')?.focus({ preventScroll: true });
   });
   document.getElementById('btn-howto-ok')!.addEventListener('click', () => {
-    setOnboarded();
-    updateHome();
-    showScreen('home');
-    document.getElementById('btn-howto')?.focus({ preventScroll: true });
+    closeHowTo();
   });
   document.getElementById('btn-settings')!.addEventListener('click', () => {
     updateSettingsUi();
@@ -1129,9 +1139,7 @@ function wire(): void {
   document
     .getElementById('btn-settings-back')!
     .addEventListener('click', () => {
-      updateHome();
-      showScreen('home');
-      document.getElementById('btn-settings')?.focus({ preventScroll: true });
+      closeSettings();
     });
   document
     .getElementById('btn-levels-back')!
@@ -1232,9 +1240,18 @@ function wire(): void {
   document.addEventListener('keydown', (event) => {
     const dialog = activeDialog();
     if (!dialog) {
-      if (event.key === 'Escape' && currentScreen() === 'levels') {
-        event.preventDefault();
-        closeLevelSelect();
+      if (event.key === 'Escape') {
+        const screen = currentScreen();
+        if (screen === 'levels') {
+          event.preventDefault();
+          closeLevelSelect();
+        } else if (screen === 'howto') {
+          event.preventDefault();
+          closeHowTo();
+        } else if (screen === 'settings') {
+          event.preventDefault();
+          closeSettings();
+        }
       }
       return;
     }

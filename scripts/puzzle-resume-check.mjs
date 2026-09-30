@@ -208,6 +208,19 @@ try {
     'Settings Back must preserve the active puzzle, undo history, unlocks, settings, and daily records',
   );
   assert.deepEqual(await readSnapshot(page), levelTwoAfterMove);
+  await page.locator('#btn-settings').focus();
+  await page.keyboard.press('Enter');
+  await page.locator('[data-screen="settings"]:not([hidden])').waitFor();
+  await page.keyboard.press('Escape');
+  await page.locator('[data-screen="home"]:not([hidden])').waitFor();
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'btn-settings');
+  assert.deepEqual(
+    await readAllStorage(page),
+    storageBeforeHomeScreenReturns,
+    'Escape from Settings must preserve the active puzzle, undo history, unlocks, settings, and daily records',
+  );
+  assert.deepEqual(await readSnapshot(page), levelTwoAfterMove);
+  console.log('PASS Escape returns from Settings to its Home trigger without changing saved state');
   await page.locator('#btn-howto').focus();
   await page.keyboard.press('Enter');
   await page.locator('[data-screen="howto"]:not([hidden])').waitFor();
@@ -234,6 +247,19 @@ try {
   );
   assert.deepEqual(await readSnapshot(page), levelTwoAfterMove);
   console.log('PASS How-to entry and return focus correctly without changing any saved game state');
+  await page.locator('#btn-howto').focus();
+  await page.keyboard.press('Enter');
+  await page.locator('[data-screen="howto"]:not([hidden])').waitFor();
+  await page.keyboard.press('Escape');
+  await page.locator('[data-screen="home"]:not([hidden])').waitFor();
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'btn-howto');
+  assert.deepEqual(
+    await readAllStorage(page),
+    storageBeforeHomeScreenReturns,
+    'Escape from How-to must preserve the active puzzle, undo history, unlocks, settings, and daily records',
+  );
+  assert.deepEqual(await readSnapshot(page), levelTwoAfterMove);
+  console.log('PASS Escape completes How-to and returns to its Home trigger without changing game records');
   await page.locator('#btn-play').click();
   await page.locator('[data-screen="play"]:not([hidden])').waitFor();
   assert.deepEqual(await readSnapshot(page), levelTwoAfterMove);

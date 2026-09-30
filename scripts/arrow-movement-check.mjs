@@ -189,8 +189,13 @@ try {
 
   // Tap near the edge of the complete cell target rather than on the arrow glyph.
   const animationStartedAt = Date.now();
-  await tapCell(page, 0, 0, { nearCorner: true });
-  await tapCell(page, 0, 0);
+  const firstTouchTarget = await page.locator('#board-access button[data-x="0"][data-y="0"]').boundingBox();
+  assert(firstTouchTarget, 'Level 10 first-touch target should be measurable before the slide');
+  await page.touchscreen.tap(firstTouchTarget.x + 4, firstTouchTarget.y + 4);
+  await page.touchscreen.tap(
+    firstTouchTarget.x + firstTouchTarget.width / 2,
+    firstTouchTarget.y + firstTouchTarget.height / 2,
+  );
   await waitForState(page, { arrowsRemaining: 7, movesMade: 1 });
   const firstAnimationMs = Date.now() - animationStartedAt;
   assert(firstAnimationMs >= 200, `arrow should slide for at least 200 ms (observed ${firstAnimationMs})`);
@@ -204,9 +209,15 @@ try {
   console.log('PASS south- and west-facing Level 10 arrows exit in their unchanged orientations');
 
   // Row 1, column 2 slides east to column 4, stopping before the east-facing
-  // arrow at column 5. A second touch during the animation must be ignored.
+  // arrow at column 5. Capture the second target before animation re-renders
+  // the accessibility buttons; a touch during the animation must be ignored.
+  const secondTouchTarget = await page.locator('#board-access button[data-x="4"][data-y="2"]').boundingBox();
+  assert(secondTouchTarget, 'Level 10 second-touch target should be measurable before the slide');
   await tapCell(page, 1, 0);
-  await tapCell(page, 4, 2);
+  await page.touchscreen.tap(
+    secondTouchTarget.x + secondTouchTarget.width / 2,
+    secondTouchTarget.y + secondTouchTarget.height / 2,
+  );
   await waitForState(page, { arrowsRemaining: 5, movesMade: 4 });
   let current = await readSnapshot(page);
   assert.deepEqual(current.engine.state.cells[3], { kind: 'arrow', dir: 'E' });
