@@ -50,6 +50,8 @@ let pwaUpdateDismissed = false;
 let pwaUpdateApplying = false;
 let pwaUpdateActivated = false;
 let updateServiceWorker: (reloadPage?: boolean) => Promise<void> = async () => {};
+let foregroundUpdateCheckTimer = 0;
+let foregroundUpdateCheck: Promise<void> | null = null;
 
 const board = document.getElementById('board') as HTMLCanvasElement;
 const boardAccess = document.getElementById('board-access') as HTMLDivElement;
@@ -173,12 +175,31 @@ function beginUpdateInstall(): void {
   });
 }
 
+function scheduleForegroundUpdateCheck(): void {
+  if (!('serviceWorker' in navigator) || document.visibilityState !== 'visible') return;
+  window.clearTimeout(foregroundUpdateCheckTimer);
+  foregroundUpdateCheckTimer = window.setTimeout(() => {
+    foregroundUpdateCheckTimer = 0;
+    if (document.visibilityState !== 'visible' || foregroundUpdateCheck) return;
+    foregroundUpdateCheck = navigator.serviceWorker.ready
+      .then((registration) => registration.update())
+      .catch(() => {
+        // Foreground checks are best-effort; offline use must remain uninterrupted.
+      })
+      .finally(() => {
+        foregroundUpdateCheck = null;
+      });
+  }, 200);
+}
+
 function setupPwaUpdates(): void {
   updateServiceWorker = registerSW({
     immediate: true,
     onNeedRefresh: onUpdateAvailable,
     onNeedReload: onUpdateActivated,
   });
+  window.addEventListener('focus', scheduleForegroundUpdateCheck);
+  document.addEventListener('visibilitychange', scheduleForegroundUpdateCheck);
 }
 
 function updateHome(): void {

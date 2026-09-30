@@ -84,6 +84,16 @@ async function requestServiceWorkerUpdate(page) {
   await page.locator('#pwa-update-notice:not([hidden])').waitFor({ timeout: 20000 });
 }
 
+async function setVisibilityState(page, visibilityState) {
+  await page.evaluate((nextState) => {
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      value: nextState,
+    });
+    document.dispatchEvent(new Event('visibilitychange'));
+  }, visibilityState);
+}
+
 async function expectReload(page, previousTimeOrigin) {
   await page.waitForFunction(
     (oldTimeOrigin) => performance.timeOrigin !== oldTimeOrigin,
@@ -133,15 +143,41 @@ try {
   const secondPageTime = await secondPage.evaluate(() => performance.timeOrigin);
   const secondLeftBefore = await secondPage.locator('#hud-left').textContent();
 
+  // Hide the first game tab while the worker changes; returning to it must
+  // trigger a prompt check without reloading either active puzzle. Headless
+  // Chromium keeps all tabs visible, so emulate the browser visibility event.
+  await page.bringToFront();
+  await setVisibilityState(page, 'visible');
+  await secondPage.bringToFront();
+  await setVisibilityState(page, 'hidden');
   const workerAfterFirstUpdate = readFileSync(serviceWorkerPath);
   writeFileSync(serviceWorkerPath, Buffer.concat([workerAfterFirstUpdate, Buffer.from('\n/* update-handoff-test-2 */\n')]));
-  await requestServiceWorkerUpdate(page);
+  await page.waitForTimeout(500);
+  assert.equal(await page.locator('#pwa-update-notice:not([hidden])').count(), 0, 'a background tab should wait until it returns to the foreground');
+  await page.bringToFront();
+  await setVisibilityState(page, 'visible');
+  await page.locator('#pwa-update-notice:not([hidden])').waitFor({ timeout: 20000 });
   await secondPage.locator('#pwa-update-notice:not([hidden])').waitFor({ timeout: 20000 });
   assert.equal(await page.locator('#btn-pwa-update').textContent(), 'Review update');
   assert.equal(await secondPage.locator('#btn-pwa-update').textContent(), 'Review update');
   await page.waitForTimeout(900);
   assert.equal(await page.evaluate(() => performance.timeOrigin), playTime, 'a waiting update must not interrupt active gameplay');
   assert.equal(await secondPage.evaluate(() => performance.timeOrigin), secondPageTime, 'a waiting update must not interrupt another active tab');
+
+  await secondPage.bringToFront();
+  await secondPage.locator('#btn-pwa-update-later').click();
+  await secondPage.locator('#pwa-update-notice').waitFor({ state: 'hidden' });
+  await secondPage.waitForTimeout(500);
+  assert.equal(await secondPage.evaluate(() => performance.timeOrigin), secondPageTime, 'deferring an update must keep the second game open');
+  assert.equal(await secondPage.locator('#hud-left').textContent(), secondLeftBefore, 'deferring an update must preserve the second puzzle');
+  assert.equal(await page.evaluate(() => performance.timeOrigin), playTime, 'deferring an update in another tab must not reload the first game');
+  console.log('PASS foreground discovery and deferral: returning tab finds the waiting worker; Not now preserves its active puzzle');
+
+  await page.bringToFront();
+  await page.waitForFunction(() => document.visibilityState === 'visible');
+  await page.locator('#pwa-update-notice:not([hidden])').waitFor();
+  await page.waitForTimeout(500);
+  assert.equal(await page.evaluate(() => performance.timeOrigin), playTime, 'foregrounding with a waiting update must not reload without consent');
 
   await page.locator('#btn-pwa-update').click();
   await page.locator('#overlay-update:not([hidden])').waitFor();
