@@ -144,14 +144,14 @@ try {
   );
   assert.equal(await page.evaluate((key) => localStorage.getItem(key), `${PREFIX}progress`), progressBefore);
   assert.equal(await page.evaluate((key) => localStorage.getItem(key), `${PREFIX}settings`), settingsBefore);
-  assert.equal(await page.evaluate((key) => localStorage.getItem(key), `${PREFIX}daily:2026-09-30`), dailyBefore);
+  assert.equal(await page.evaluate((key) => localStorage.getItem(key), `${PREFIX}daily:${currentDailyKey}`), dailyBefore);
   assert.equal(await readSnapshot(page), null, 'opening the picker must not create or replace an active puzzle');
   await page.locator('#btn-levels-back').click();
   await page.locator('[data-screen="home"]:not([hidden])').waitFor();
   assert.equal(await page.evaluate(() => document.activeElement?.id), 'btn-levels', 'Back should return focus to the Home picker trigger');
   assert.equal(await page.evaluate((key) => localStorage.getItem(key), `${PREFIX}progress`), progressBefore);
   assert.equal(await page.evaluate((key) => localStorage.getItem(key), `${PREFIX}settings`), settingsBefore);
-  assert.equal(await page.evaluate((key) => localStorage.getItem(key), `${PREFIX}daily:2026-09-30`), dailyBefore);
+  assert.equal(await page.evaluate((key) => localStorage.getItem(key), `${PREFIX}daily:${currentDailyKey}`), dailyBefore);
 
   await page.locator('#btn-levels').click();
   await page.getByRole('button', { name: '2', exact: true }).click();

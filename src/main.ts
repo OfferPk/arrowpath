@@ -85,6 +85,9 @@ type PendingPuzzleAction =
 type LevelSelectOrigin = 'home' | 'play' | 'win';
 let pendingPuzzleAction: PendingPuzzleAction | null = null;
 let levelSelectReturn: { origin: LevelSelectOrigin; trigger: HTMLElement } | null = null;
+type DailyPointerClickGuard = { x: number; y: number; expiresAt: number };
+let dailyPointerClickGuard: DailyPointerClickGuard | null = null;
+let suppressedPointerSequence: { pointerId: number; x: number; y: number } | null = null;
 
 const board = document.getElementById('board') as HTMLCanvasElement;
 const boardAccess = document.getElementById('board-access') as HTMLDivElement;
@@ -1172,6 +1175,53 @@ function wire(): void {
   document.getElementById('btn-puzzle-confirm')!.addEventListener('click', confirmPuzzleAction);
   document.getElementById('btn-puzzle-cancel')!.addEventListener('click', () => closeActiveDialog());
 
+  document.addEventListener('pointerdown', (event) => {
+    const guard = dailyPointerClickGuard;
+    if (!guard) return;
+    dailyPointerClickGuard = null;
+    if (
+      performance.now() > guard.expiresAt ||
+      Math.abs(event.clientX - guard.x) > 8 ||
+      Math.abs(event.clientY - guard.y) > 8
+    ) return;
+    suppressedPointerSequence = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+    };
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }, true);
+  document.addEventListener('pointerup', (event) => {
+    if (suppressedPointerSequence?.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const pointerId = event.pointerId;
+    window.setTimeout(() => {
+      if (suppressedPointerSequence?.pointerId === pointerId) {
+        suppressedPointerSequence = null;
+      }
+    }, 500);
+  }, true);
+  document.addEventListener('pointercancel', (event) => {
+    if (suppressedPointerSequence?.pointerId === event.pointerId) {
+      suppressedPointerSequence = null;
+    }
+  }, true);
+  document.addEventListener('click', (event) => {
+    const suppressed = suppressedPointerSequence;
+    if (!suppressed) return;
+    const pointerId = event instanceof PointerEvent ? event.pointerId : null;
+    const sameCoordinates =
+      Math.abs(event.clientX - suppressed.x) <= 8 &&
+      Math.abs(event.clientY - suppressed.y) <= 8;
+    if (pointerId === suppressed.pointerId || (pointerId === null && event.detail > 0 && sameCoordinates)) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      suppressedPointerSequence = null;
+    }
+  }, true);
+
   document.getElementById('btn-play')!.addEventListener('click', () => {
     if (engine && hasUnfinishedPuzzle) {
       presentActivePuzzle();
@@ -1180,7 +1230,14 @@ function wire(): void {
     const p = getProgress();
     void startLevel(Math.min(p.unlocked, pack!.levels.length), 'campaign');
   });
-  document.getElementById('btn-daily')!.addEventListener('click', () => {
+  document.getElementById('btn-daily')!.addEventListener('click', (event) => {
+    if (event.detail > 0) {
+      dailyPointerClickGuard = {
+        x: event.clientX,
+        y: event.clientY,
+        expiresAt: performance.now() + 500,
+      };
+    }
     startDaily();
   });
   document.getElementById('btn-levels')!.addEventListener('click', () => {
