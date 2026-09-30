@@ -62,7 +62,9 @@ let foregroundUpdateCheck: Promise<void> | null = null;
 type PendingPuzzleAction =
   | { kind: 'restart' }
   | { kind: 'replace'; levelId: number; mode: PlayMode; key: string | null };
+type LevelSelectOrigin = 'home' | 'play' | 'win';
 let pendingPuzzleAction: PendingPuzzleAction | null = null;
+let levelSelectReturn: { origin: LevelSelectOrigin; trigger: HTMLElement } | null = null;
 
 const board = document.getElementById('board') as HTMLCanvasElement;
 const boardAccess = document.getElementById('board-access') as HTMLDivElement;
@@ -496,9 +498,48 @@ function closeActiveDialog(restoreFocus = true): void {
   if (restoreFocus) restoreDialogFocus(returnFocus);
 }
 
-function focusFirstLevel(): void {
-  document.querySelector<HTMLButtonElement>('#level-grid button:not(:disabled)')
-    ?.focus({ preventScroll: true });
+function focusCurrentLevel(): void {
+  const current = document.querySelector<HTMLButtonElement>(
+    '#level-grid button.current:not(:disabled)',
+  );
+  const firstAvailable = document.querySelector<HTMLButtonElement>(
+    '#level-grid button:not(:disabled)',
+  );
+  (current ?? firstAvailable)?.focus();
+}
+
+function openLevelSelect(origin: LevelSelectOrigin, trigger: HTMLElement): void {
+  levelSelectReturn = { origin, trigger };
+  if (origin !== 'home') hideOverlays();
+  buildLevelSelect();
+  showScreen('levels');
+  focusCurrentLevel();
+}
+
+function closeLevelSelect(): void {
+  const returnTo = levelSelectReturn;
+  levelSelectReturn = null;
+  if (!returnTo) {
+    showScreen('home');
+    document.getElementById('btn-levels')?.focus({ preventScroll: true });
+    return;
+  }
+
+  if (returnTo.origin === 'home') {
+    showScreen('home');
+  } else {
+    showScreen('play');
+    layout();
+    render();
+    if (returnTo.origin === 'win') {
+      showDialog(winEl, 'btn-win-levels');
+      dialogReturnFocus = returnTo.trigger;
+    }
+  }
+
+  if (returnTo.trigger.isConnected && !returnTo.trigger.closest('[hidden]')) {
+    returnTo.trigger.focus({ preventScroll: true });
+  }
 }
 
 function configureWinOverlay(): void {
@@ -581,6 +622,7 @@ async function startLevel(
     playMode === mode &&
     dailyKey === (mode === 'daily' ? key : null);
   if (sameActiveRun) {
+    levelSelectReturn = null;
     presentActivePuzzle();
     return;
   }
@@ -588,6 +630,7 @@ async function startLevel(
     showPuzzleConfirmation({ kind: 'replace', levelId: id, mode, key });
     return;
   }
+  levelSelectReturn = null;
   if (replacementConfirmed) clearActivePuzzle();
   hasUnfinishedPuzzle = true;
   playMode = mode;
@@ -936,8 +979,7 @@ function wire(): void {
     startDaily();
   });
   document.getElementById('btn-levels')!.addEventListener('click', () => {
-    buildLevelSelect();
-    showScreen('levels');
+    openLevelSelect('home', document.getElementById('btn-levels')!);
   });
   document.getElementById('btn-howto')!.addEventListener('click', () =>
     showScreen('howto'),
@@ -959,10 +1001,7 @@ function wire(): void {
     });
   document
     .getElementById('btn-levels-back')!
-    .addEventListener('click', () => {
-      updateHome();
-      showScreen('home');
-    });
+    .addEventListener('click', closeLevelSelect);
   document.getElementById('btn-mute')!.addEventListener('click', () => {
     muted = !muted;
     setSettings({ muted });
@@ -983,10 +1022,7 @@ function wire(): void {
   document.getElementById('btn-undo')!.addEventListener('click', () => tryUndo());
   document.getElementById('btn-retry')!.addEventListener('click', () => doRetry());
   document.getElementById('btn-play-levels')!.addEventListener('click', () => {
-    hideOverlays();
-    buildLevelSelect();
-    showScreen('levels');
-    focusFirstLevel();
+    openLevelSelect('play', document.getElementById('btn-play-levels')!);
   });
 
   document.getElementById('btn-fail-retry')!.addEventListener('click', () => doRetry());
@@ -1018,10 +1054,7 @@ function wire(): void {
   });
   document.getElementById('btn-share')!.addEventListener('click', () => shareWin());
   document.getElementById('btn-win-levels')!.addEventListener('click', () => {
-    hideOverlays();
-    buildLevelSelect();
-    showScreen('levels');
-    focusFirstLevel();
+    openLevelSelect('win', document.getElementById('btn-win-levels')!);
   });
   document.getElementById('btn-win-home')!.addEventListener('click', () => {
     hideOverlays();
@@ -1039,7 +1072,13 @@ function wire(): void {
 
   document.addEventListener('keydown', (event) => {
     const dialog = activeDialog();
-    if (!dialog) return;
+    if (!dialog) {
+      if (event.key === 'Escape' && currentScreen() === 'levels') {
+        event.preventDefault();
+        closeLevelSelect();
+      }
+      return;
+    }
     const focusable = Array.from(
       dialog.querySelectorAll<HTMLElement>(
         'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',

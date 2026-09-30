@@ -120,8 +120,21 @@ try {
     '3',
     'without an active run, Level Select should highlight the next unlocked campaign level',
   );
+  assert.equal(
+    await page.evaluate(() => document.activeElement === document.querySelector('#level-grid .current')),
+    true,
+    'Home → Level Select should focus the highlighted next unlocked level',
+  );
+  assert.equal(await page.evaluate((key) => localStorage.getItem(key), `${PREFIX}progress`), progressBefore);
+  assert.equal(await page.evaluate((key) => localStorage.getItem(key), `${PREFIX}settings`), settingsBefore);
+  assert.equal(await page.evaluate((key) => localStorage.getItem(key), `${PREFIX}daily:2026-09-30`), dailyBefore);
+  assert.equal(await readSnapshot(page), null, 'opening the picker must not create or replace an active puzzle');
   await page.locator('#btn-levels-back').click();
   await page.locator('[data-screen="home"]:not([hidden])').waitFor();
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'btn-levels', 'Back should return focus to the Home picker trigger');
+  assert.equal(await page.evaluate((key) => localStorage.getItem(key), `${PREFIX}progress`), progressBefore);
+  assert.equal(await page.evaluate((key) => localStorage.getItem(key), `${PREFIX}settings`), settingsBefore);
+  assert.equal(await page.evaluate((key) => localStorage.getItem(key), `${PREFIX}daily:2026-09-30`), dailyBefore);
 
   await page.locator('#btn-levels').click();
   await page.getByRole('button', { name: '2', exact: true }).click();
@@ -145,15 +158,37 @@ try {
   console.log('PASS Home then Play resumes the same unsolved board');
 
   await page.locator('#btn-play-levels').click();
+  assert.equal(
+    await page.evaluate(() => document.activeElement === document.querySelector('#level-grid .current')),
+    true,
+    'Play → Level Select should focus the active run instead of Level 1',
+  );
+  assert.deepEqual(await readSnapshot(page), levelTwoAfterMove, 'opening Level Select must preserve the active board and undo history');
+  await page.keyboard.press('Escape');
+  await page.locator('[data-screen="play"]:not([hidden])').waitFor();
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'btn-play-levels', 'Escape should restore focus to the active-run picker trigger');
+  assert.deepEqual(await readSnapshot(page), levelTwoAfterMove, 'closing the picker with Escape must preserve the active board and undo history');
+  assert.equal(await page.evaluate((key) => localStorage.getItem(key), `${PREFIX}progress`), progressBefore);
+  assert.equal(await page.evaluate((key) => localStorage.getItem(key), `${PREFIX}settings`), settingsBefore);
+  await page.locator('#btn-play-levels').click();
+  assert.equal(
+    await page.evaluate(() => document.activeElement === document.querySelector('#level-grid .current')),
+    true,
+    'reopening Level Select should focus the active campaign level',
+  );
   await page.getByRole('button', { name: '2', exact: true }).click();
   assert.deepEqual(await readSnapshot(page), levelTwoAfterMove, 'selecting the active level must not reset it');
   await page.locator('#btn-play-levels').click();
   await page.locator('#btn-levels-back').click();
+  await page.locator('[data-screen="play"]:not([hidden])').waitFor();
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'btn-play-levels', 'Back should return focus to the active-puzzle picker trigger');
+  assert.deepEqual(await readSnapshot(page), levelTwoAfterMove, 'Back from Level Select must preserve the same run');
+  await page.locator('#btn-menu').click();
   await page.locator('[data-screen="home"]:not([hidden])').waitFor();
   await page.locator('#btn-play').click();
-  assert.deepEqual(await readSnapshot(page), levelTwoAfterMove, 'Level Select Back and Home Play must preserve the same run');
+  assert.deepEqual(await readSnapshot(page), levelTwoAfterMove, 'Home Play must still resume the same run');
   assert.equal(await resumeStatus.isVisible(), false, 'same-page Level Select navigation must stay silent');
-  console.log('PASS same-level selection and Level Select Back/Home preserve the active run');
+  console.log('PASS same-level selection, Back, and Home Play preserve the active run');
 
   await page.locator('#btn-play-levels').click();
   await page.getByRole('button', { name: '3', exact: true }).click();
@@ -161,6 +196,11 @@ try {
   await scanAxe(page, 'level replacement confirmation');
   await page.locator('#btn-puzzle-cancel').click();
   await page.locator('#overlay-puzzle-confirm').waitFor({ state: 'hidden' });
+  assert.equal(
+    await page.evaluate(() => document.activeElement?.closest('#level-grid .level-btn')?.textContent),
+    '3',
+    'canceling a level change should return focus to the selected level',
+  );
   assert.deepEqual(await readSnapshot(page), levelTwoAfterMove, 'cancelling level replacement must keep the prior snapshot');
   assert.equal(await page.locator('[data-screen="levels"]:not([hidden])').count(), 1);
   await page.getByRole('button', { name: '3', exact: true }).click();
@@ -221,9 +261,9 @@ try {
   await page.locator('#btn-play-levels').click();
   assert.equal(await resumeStatus.isVisible(), false, 'leaving the restored run must dismiss its one-time status');
   await page.locator('#btn-levels-back').click();
-  await page.locator('[data-screen="home"]:not([hidden])').waitFor();
-  await page.locator('#btn-play').click();
-  assert.deepEqual(await readSnapshot(page), current, 'Back/Home/Play must retain the restored board after Undo');
+  await page.locator('[data-screen="play"]:not([hidden])').waitFor();
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'btn-play-levels', 'Back should restore focus to the active-run picker trigger after reload');
+  assert.deepEqual(await readSnapshot(page), current, 'Back from Level Select must retain the restored board after Undo');
   assert.equal(await resumeStatus.isVisible(), false, 'same-page return to a restored run must not announce it again');
 
   for (const point of [{ x: 0, y: 0 }, { x: 3, y: 1 }]) {

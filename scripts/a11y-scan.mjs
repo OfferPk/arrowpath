@@ -87,6 +87,11 @@ try {
   await scan(page, 'home');
 
   await page.locator('#btn-levels').click();
+  assert.equal(
+    await page.evaluate(() => document.activeElement === document.querySelector('#level-grid .current')),
+    true,
+    'Home → Level Select should move keyboard focus into the highlighted level',
+  );
   await scan(page, 'level select');
   await page.locator('#btn-levels-back').click();
   await page.locator('#btn-settings').click();
@@ -128,6 +133,22 @@ try {
   await page.locator('#overlay-win:not([hidden])').waitFor({ timeout: 3000 });
   assert.equal(await page.evaluate(() => document.activeElement?.id), 'btn-next', 'completion dialog should receive initial focus');
   await scan(page, 'completion dialog');
+  const progressAfterWin = await page.evaluate((key) => localStorage.getItem(key), 'arrowpath:v1:progress');
+  const settingsAfterWin = await page.evaluate((key) => localStorage.getItem(key), 'arrowpath:v1:settings');
+  await page.locator('#btn-win-levels').click();
+  await page.locator('[data-screen="levels"]:not([hidden])').waitFor();
+  assert.equal(await page.locator('#level-grid .current').textContent(), '2', 'the win picker should highlight the next unlocked level');
+  assert.equal(
+    await page.evaluate(() => document.activeElement === document.querySelector('#level-grid .current')),
+    true,
+    'Win → Level Select should focus the highlighted next level',
+  );
+  await page.keyboard.press('Escape');
+  await page.locator('[data-screen="play"]:not([hidden])').waitFor();
+  await page.locator('#overlay-win:not([hidden])').waitFor();
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'btn-win-levels', 'Escape should restore the win dialog and return focus to its picker trigger');
+  assert.equal(await page.evaluate((key) => localStorage.getItem(key), 'arrowpath:v1:progress'), progressAfterWin, 'opening and closing the picker must not alter cleared progress');
+  assert.equal(await page.evaluate((key) => localStorage.getItem(key), 'arrowpath:v1:settings'), settingsAfterWin, 'opening and closing the picker must not alter settings');
   await page.keyboard.press('Escape');
   await page.locator('#overlay-win').waitFor({ state: 'hidden' });
   assert.ok(await page.evaluate(() => document.activeElement?.closest('#board-access') !== null), 'closing completion dialog should restore focus to the board');
@@ -182,6 +203,30 @@ try {
   });
   await touchPage.goto(baseUrl, { waitUntil: 'networkidle' });
   await touchPage.locator('#btn-levels').tap();
+  const focusedMobileLevel = await touchPage.evaluate(() => {
+    const current = document.querySelector('#level-grid .current');
+    const grid = document.querySelector('#level-grid');
+    const target = current?.getBoundingClientRect();
+    const viewport = grid?.getBoundingClientRect();
+    return {
+      focused: document.activeElement === current,
+      level: current?.textContent,
+      gridScrollTop: grid?.scrollTop,
+      visible: Boolean(target && viewport && target.top >= viewport.top && target.bottom <= viewport.bottom),
+    };
+  });
+  assert.equal(focusedMobileLevel.level, '50', 'the mobile picker should target its highlighted campaign level');
+  assert.equal(focusedMobileLevel.focused, true, 'mobile Home → Level Select should focus the highlighted level');
+  assert.equal(focusedMobileLevel.visible, true, 'the focused high-numbered level should scroll into the picker viewport');
+  assert.ok((focusedMobileLevel.gridScrollTop ?? 0) > 0, 'the mobile picker should scroll to the focused high-numbered level');
+  await touchPage.locator('#btn-levels-back').tap();
+  assert.equal(await touchPage.evaluate(() => document.activeElement?.id), 'btn-levels', 'mobile Back should restore focus to the Home picker trigger');
+  await touchPage.locator('#btn-levels').tap();
+  assert.equal(
+    await touchPage.evaluate(() => document.activeElement === document.querySelector('#level-grid .current')),
+    true,
+    'reopening the mobile picker should focus the highlighted level',
+  );
   await touchPage.locator('#level-grid button').filter({ hasText: /^50$/ }).tap();
   await touchPage.locator('#board-access [role="gridcell"]').first().waitFor();
   await scan(touchPage, 'compact landscape (Level 50 touch board)');
