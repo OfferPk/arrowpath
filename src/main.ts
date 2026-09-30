@@ -29,7 +29,10 @@ import { describeRestoredRunStatus } from './ui/resume-status';
 import { manageDialogKeydown } from './ui/dialog';
 import { registerSW } from 'virtual:pwa-register';
 import { getUpdateNoticePresentation } from './ui/pwa-update';
-import { getCampaignLevelToHighlight } from './ui/level-select';
+import {
+  getCampaignLevelGridTarget,
+  getCampaignLevelToHighlight,
+} from './ui/level-select';
 import { getWinActionLabel } from './ui/win-action';
 import type { GameState, LevelDef } from './game/types';
 
@@ -921,7 +924,9 @@ function buildLevelSelect(): void {
     if (level.id === campaignLevelToHighlight) {
       btn.classList.add('current');
     }
+    btn.dataset.levelId = String(level.id);
     btn.disabled = locked;
+    btn.tabIndex = !locked && level.id === campaignLevelToHighlight ? 0 : -1;
     btn.addEventListener('click', () => {
       void startLevel(level.id, 'campaign');
     });
@@ -1025,6 +1030,31 @@ function wire(): void {
   document
     .getElementById('btn-levels-back')!
     .addEventListener('click', closeLevelSelect);
+  const levelGrid = document.getElementById('level-grid')!;
+  levelGrid.addEventListener('focusin', (event) => {
+    const focused = (event.target as HTMLElement).closest<HTMLButtonElement>('.level-btn');
+    if (!focused || focused.disabled || !levelGrid.contains(focused)) return;
+    levelGrid.querySelectorAll<HTMLButtonElement>('.level-btn').forEach((button) => {
+      button.tabIndex = button === focused ? 0 : -1;
+    });
+  });
+  levelGrid.addEventListener('keydown', (event) => {
+    if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+    const focused = (event.target as HTMLElement).closest<HTMLButtonElement>('.level-btn');
+    if (!focused || focused.disabled || !levelGrid.contains(focused)) return;
+    event.preventDefault();
+    const targetLevelId = getCampaignLevelGridTarget({
+      currentLevelId: Number(focused.dataset.levelId),
+      key: event.key,
+      unlockedLevel: getProgress().unlocked,
+      totalLevels: pack?.levels.length ?? 0,
+      columns: 5,
+    });
+    if (targetLevelId === null) return;
+    levelGrid
+      .querySelector<HTMLButtonElement>(`[data-level-id="${targetLevelId}"]`)
+      ?.focus({ preventScroll: true });
+  });
   document.getElementById('btn-mute')!.addEventListener('click', () => {
     muted = !muted;
     setSettings({ muted });

@@ -288,6 +288,8 @@ try {
   await touchPage.addInitScript(() => {
     localStorage.setItem('arrowpath:v1:progress', JSON.stringify({ unlocked: 50, cleared: [] }));
     localStorage.setItem('arrowpath:v1:onboarded', JSON.stringify({ ok: true }));
+    localStorage.setItem('arrowpath:v1:settings', JSON.stringify({ muted: true, adsRemoved: false }));
+    localStorage.setItem('arrowpath:v1:daily:2099-12-31', JSON.stringify({ completed: true, levelId: 12, finishedAt: '2099-12-31T08:00:00.000Z' }));
   });
   await touchPage.goto(baseUrl, { waitUntil: 'networkidle' });
   await touchPage.locator('#btn-levels').tap();
@@ -307,6 +309,46 @@ try {
   assert.equal(focusedMobileLevel.focused, true, 'mobile Home → Level Select should focus the highlighted level');
   assert.equal(focusedMobileLevel.visible, true, 'the focused high-numbered level should scroll into the picker viewport');
   assert.ok((focusedMobileLevel.gridScrollTop ?? 0) > 0, 'the mobile picker should scroll to the focused high-numbered level');
+  assert.equal(
+    await touchPage.locator('#level-grid button[tabindex="0"]:not(:disabled)').count(),
+    1,
+    'the level picker should expose one Tab stop and use roving focus',
+  );
+  const levelPickerStorageBeforeNavigation = await touchPage.evaluate(() => Object.fromEntries(
+    Array.from({ length: localStorage.length }, (_, index) => {
+      const key = localStorage.key(index);
+      return [key, key === null ? null : localStorage.getItem(key)];
+    }).filter(([key]) => key !== null),
+  ));
+  for (const [key, expectedLevel] of [
+    ['ArrowLeft', '49'],
+    ['ArrowRight', '50'],
+    ['ArrowUp', '45'],
+    ['ArrowDown', '50'],
+    ['ArrowRight', '50'],
+  ]) {
+    await touchPage.keyboard.press(key);
+    assert.equal(
+      (await touchPage.evaluate(() => document.activeElement?.textContent ?? '')).trim(),
+      expectedLevel,
+      `${key} should navigate within the five-column picker without wrapping or crossing its boundary`,
+    );
+  }
+  assert.equal(
+    await touchPage.locator('#level-grid .current').textContent(),
+    '50',
+    'moving keyboard focus must not change the selected/highlighted campaign destination',
+  );
+  assert.deepEqual(
+    await touchPage.evaluate(() => Object.fromEntries(
+      Array.from({ length: localStorage.length }, (_, index) => {
+        const key = localStorage.key(index);
+        return [key, key === null ? null : localStorage.getItem(key)];
+      }).filter(([key]) => key !== null),
+    )),
+    levelPickerStorageBeforeNavigation,
+    'keyboard-only picker navigation must preserve unlocks, settings, daily records, onboarding, and all other storage',
+  );
   await touchPage.locator('#btn-levels-back').tap();
   assert.equal(await touchPage.evaluate(() => document.activeElement?.id), 'btn-levels', 'mobile Back should restore focus to the Home picker trigger');
   await touchPage.locator('#btn-levels').tap();
@@ -453,6 +495,48 @@ try {
   await touchPage.waitForTimeout(120);
   const arrowsAfterTouch = Number(await touchPage.locator('#hud-left').textContent());
   assert.ok(arrowsAfterTouch < arrowsBeforeTouch, 'tapping a safe arrow should still fire it');
+  const stateBeforeActiveRunPickerNavigation = await touchPage.evaluate(() => Object.fromEntries(
+    Array.from({ length: localStorage.length }, (_, index) => {
+      const key = localStorage.key(index);
+      return [key, key === null ? null : localStorage.getItem(key)];
+    }).filter(([key]) => key !== null),
+  ));
+  const runBeforePickerNavigation = JSON.parse(stateBeforeActiveRunPickerNavigation['arrowpath:v1:active-puzzle']);
+  assert.ok(runBeforePickerNavigation.engine.history.length > 0, 'the state-safety check should include a run with undo history');
+  await touchPage.locator('#btn-play-levels').tap();
+  await touchPage.locator('[data-screen="levels"]:not([hidden])').waitFor();
+  assert.equal(
+    await touchPage.evaluate(() => document.activeElement?.textContent?.trim()),
+    '50',
+    'the active campaign run should remain the picker’s focused level',
+  );
+  await touchPage.keyboard.press('ArrowLeft');
+  assert.equal((await touchPage.evaluate(() => document.activeElement?.textContent ?? '')).trim(), '49');
+  await touchPage.keyboard.press('ArrowRight');
+  assert.equal((await touchPage.evaluate(() => document.activeElement?.textContent ?? '')).trim(), '50');
+  assert.deepEqual(
+    await touchPage.evaluate(() => Object.fromEntries(
+      Array.from({ length: localStorage.length }, (_, index) => {
+        const key = localStorage.key(index);
+        return [key, key === null ? null : localStorage.getItem(key)];
+      }).filter(([key]) => key !== null),
+    )),
+    stateBeforeActiveRunPickerNavigation,
+    'picker keyboard navigation during an unfinished run must preserve the complete run/undo snapshot, campaign progress, settings, and daily records',
+  );
+  await touchPage.keyboard.press('Escape');
+  await touchPage.locator('[data-screen="play"]:not([hidden])').waitFor();
+  assert.equal(await touchPage.evaluate(() => document.activeElement?.id), 'btn-play-levels');
+  assert.deepEqual(
+    await touchPage.evaluate(() => Object.fromEntries(
+      Array.from({ length: localStorage.length }, (_, index) => {
+        const key = localStorage.key(index);
+        return [key, key === null ? null : localStorage.getItem(key)];
+      }).filter(([key]) => key !== null),
+    )),
+    stateBeforeActiveRunPickerNavigation,
+    'leaving the picker must also preserve the active run and every saved record',
+  );
   for (const viewport of [
     { width: 390, height: 320 },
     { width: 568, height: 260 },
