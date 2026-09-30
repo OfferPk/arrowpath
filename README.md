@@ -31,6 +31,18 @@ npm run preview   # serve production build at /arrowpath/
 
 **GitHub Pages / static host:** app is served under **`/arrowpath/`** (not site root). Asset fetches use `import.meta.env.BASE_URL`.
 
+## Publish to GitHub Pages
+
+Pages is configured for legacy publishing from the **root of `gh-pages`**. From a clean, up-to-date `main`, first preview the operation with:
+
+```bash
+npm run publish:pages -- --dry-run
+```
+
+When the preview is clear, publish with `npm run publish:pages`. The command checks the live Pages source through GitHub's API, installs the locked dependencies, runs the test suite and production build, and validates the `/arrowpath/` asset paths. It stages `dist/` in a temporary worktree based on the fetched `gh-pages` tip, preserves `.nojekyll`, any `CNAME`, and other hidden root entries, and refuses unknown root files rather than deleting them. It stops if `main` is dirty or not exactly in sync with `origin/main`, if the Pages source differs, or if the Pages branch changes while it is preparing the deployment. The final push is a regular fast-forward-only push; it never force-pushes.
+
+Authenticate the GitHub CLI or set `GH_TOKEN` / `GITHUB_TOKEN` for the command. The credential must be able to read this repository's Pages settings and, for an actual publish, push repository contents; no GitHub Actions/workflow permission is used. This publisher does not edit workflow files.
+
 ## Play
 
 | Control | Action |
