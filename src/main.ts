@@ -1211,6 +1211,7 @@ async function boot(): Promise<void> {
   updateSettingsUi();
   if (!isOnboarded()) {
     showScreen('howto');
+    document.getElementById('howto-title')?.focus({ preventScroll: true });
   } else {
     showScreen('home');
   }

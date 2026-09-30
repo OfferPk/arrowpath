@@ -75,6 +75,46 @@ try {
   const launchOptions = { headless: true, args: ['--no-sandbox'] };
   if (process.env.CHROMIUM_PATH || existsSync(chromiumPath)) launchOptions.executablePath = chromiumPath;
   browser = await chromium.launch(launchOptions);
+  const firstVisitContext = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    colorScheme: 'dark',
+    serviceWorkers: 'block',
+  });
+  await firstVisitContext.addInitScript(() => {
+    localStorage.setItem('arrowpath:v1:progress', JSON.stringify({ unlocked: 4, cleared: [1, 2, 3] }));
+    localStorage.setItem('arrowpath:v1:settings', JSON.stringify({ muted: true, adsRemoved: false }));
+    localStorage.setItem('arrowpath:v1:daily:2026-09-30', JSON.stringify({ completed: true, levelId: 4, finishedAt: '2026-09-30T00:00:00.000Z' }));
+  });
+  const firstVisitPage = await firstVisitContext.newPage();
+  await firstVisitPage.goto(baseUrl, { waitUntil: 'networkidle' });
+  await firstVisitPage.locator('[data-screen="howto"]:not([hidden])').waitFor();
+  assert.equal(
+    await firstVisitPage.evaluate(() => document.activeElement?.id),
+    'howto-title',
+    'first-visit onboarding should focus its heading before the Got it control',
+  );
+  assert.deepEqual(
+    await firstVisitPage.evaluate(() => Object.fromEntries(
+      Array.from({ length: localStorage.length }, (_, index) => {
+        const key = localStorage.key(index);
+        return [key, key === null ? null : localStorage.getItem(key)];
+      }).filter(([key]) => key !== null),
+    )),
+    {
+      'arrowpath:v1:progress': JSON.stringify({ unlocked: 4, cleared: [1, 2, 3] }),
+      'arrowpath:v1:settings': JSON.stringify({ muted: true, adsRemoved: false }),
+      'arrowpath:v1:daily:2026-09-30': JSON.stringify({ completed: true, levelId: 4, finishedAt: '2026-09-30T00:00:00.000Z' }),
+    },
+    'first-visit focus must not change saved progress, settings, or daily records',
+  );
+  await firstVisitPage.keyboard.press('Tab');
+  assert.equal(
+    await firstVisitPage.evaluate(() => document.activeElement?.id),
+    'btn-howto-ok',
+    'Tab after the first-visit heading should reach Got it',
+  );
+  await firstVisitContext.close();
+
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, colorScheme: 'dark' });
   const page = await context.newPage();
   await page.goto(baseUrl, { waitUntil: 'networkidle' });
