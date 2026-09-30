@@ -93,9 +93,9 @@
           <button type="button" class="btn ghost" id="btn-play-levels">Levels</button>
         </div>
 
-        <div id="overlay-fail" class="overlay" hidden>
+        <div id="overlay-fail" class="overlay" role="dialog" aria-modal="true" aria-labelledby="fail-title" aria-describedby="fail-reason" tabindex="-1" hidden>
           <div class="panel">
-            <h2>Collision!</h2>
+            <h2 id="fail-title">Collision!</h2>
             <p class="go-meta" id="fail-reason">Path blocked.</p>
             <button type="button" class="btn primary" id="btn-fail-retry">Retry</button>
             <button type="button" class="btn secondary" id="btn-fail-undo">Undo</button>
@@ -103,9 +103,9 @@
           </div>
         </div>
 
-        <div id="overlay-win" class="overlay" hidden>
+        <div id="overlay-win" class="overlay" role="dialog" aria-modal="true" aria-labelledby="win-title" aria-describedby="win-meta" tabindex="-1" hidden>
           <div class="panel">
-            <h2>Cleared!</h2>
+            <h2 id="win-title">Cleared!</h2>
             <p class="go-meta" id="win-meta">Neon line clear. Next station?</p>
             <button type="button" class="btn primary" id="btn-next">Next level</button>
             <button type="button" class="btn secondary" id="btn-share">Share</button>
@@ -114,7 +114,7 @@
           </div>
         </div>
 
-        <div id="overlay-reward" class="overlay" hidden>
+        <div id="overlay-reward" class="overlay" role="dialog" aria-modal="true" aria-labelledby="reward-title" aria-describedby="reward-body" tabindex="-1" hidden>
           <div class="panel">
             <h2 id="reward-title">Watch ad?</h2>
             <p class="go-meta" id="reward-body">Placeholder rewarded ad for hint / extra undo.</p>

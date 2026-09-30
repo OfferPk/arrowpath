@@ -21,6 +21,7 @@ import {
 import { completeLevelWithoutWaitingForAd } from './game/completion';
 import { drawBoard, resizeCanvas } from './ui/canvas';
 import { describeBoard, describeBoardCell } from './ui/accessibility';
+import { manageDialogKeydown } from './ui/dialog';
 import type { GameState, LevelDef } from './game/types';
 
 type PlayMode = 'campaign' | 'daily';
@@ -36,6 +37,10 @@ let flashPath: { x: number; y: number }[] | null = null;
 let activeCellIndex = 0;
 let muted = getSettings().muted;
 let rewardAction: 'hint' | 'undo' | null = null;
+let dialogReturnFocus: HTMLElement | null = null;
+let suspendedDialog: HTMLElement | null = null;
+let suspendedDialogFocus: HTMLElement | null = null;
+let rewardAttempt = 0;
 let toastTimer = 0;
 
 const board = document.getElementById('board') as HTMLCanvasElement;
@@ -201,9 +206,101 @@ function render(): void {
 }
 
 function hideOverlays(): void {
+  rewardAttempt += 1;
+  rewardAction = null;
   failEl.hidden = true;
   winEl.hidden = true;
   rewardEl.hidden = true;
+  dialogReturnFocus = null;
+  suspendedDialog = null;
+  suspendedDialogFocus = null;
+}
+
+function activeDialog(): HTMLElement | null {
+  return [rewardEl, failEl, winEl].find((dialog) => !dialog.hidden) ?? null;
+}
+
+function overlayFocusTarget(): HTMLElement | null {
+  const active = document.activeElement;
+  if (
+    active instanceof HTMLElement &&
+    active !== document.body &&
+    active.isConnected &&
+    !active.closest('[hidden]')
+  ) {
+    return active;
+  }
+  const playScreen = document.querySelector<HTMLElement>('[data-screen="play"]');
+  if (playScreen && !playScreen.hidden) {
+    return boardAccess.querySelector<HTMLButtonElement>(
+      `[data-cell-index="${activeCellIndex}"]`,
+    );
+  }
+  return document.getElementById('btn-play');
+}
+
+function restoreDialogFocus(target: HTMLElement | null): void {
+  if (target?.isConnected && !target.closest('[hidden]')) {
+    target.focus({ preventScroll: true });
+    return;
+  }
+  const playScreen = document.querySelector<HTMLElement>('[data-screen="play"]');
+  if (playScreen && !playScreen.hidden) {
+    boardAccess.querySelector<HTMLButtonElement>(
+      `[data-cell-index="${activeCellIndex}"]`,
+    )?.focus({ preventScroll: true });
+    return;
+  }
+  document.getElementById('btn-play')?.focus({ preventScroll: true });
+}
+
+function showDialog(dialog: HTMLElement, initialFocusId: string): void {
+  const previous = activeDialog();
+  const returnFocus = overlayFocusTarget();
+  if (previous && previous !== dialog) {
+    suspendedDialog = previous;
+    suspendedDialogFocus = returnFocus;
+    previous.hidden = true;
+  } else {
+    suspendedDialog = null;
+    suspendedDialogFocus = null;
+  }
+  dialogReturnFocus = returnFocus;
+  dialog.hidden = false;
+  const initialFocus = document.getElementById(initialFocusId);
+  if (initialFocus instanceof HTMLElement) {
+    initialFocus.focus({ preventScroll: true });
+  } else {
+    dialog.focus({ preventScroll: true });
+  }
+}
+
+function closeActiveDialog(restoreFocus = true): void {
+  const dialog = activeDialog();
+  if (!dialog) return;
+  dialog.hidden = true;
+
+  if (dialog === rewardEl && suspendedDialog) {
+    const parent = suspendedDialog;
+    const parentFocus = suspendedDialogFocus;
+    suspendedDialog = null;
+    suspendedDialogFocus = null;
+    dialogReturnFocus = null;
+    parent.hidden = false;
+    if (restoreFocus) restoreDialogFocus(parentFocus);
+    return;
+  }
+
+  const returnFocus = dialogReturnFocus;
+  dialogReturnFocus = null;
+  suspendedDialog = null;
+  suspendedDialogFocus = null;
+  if (restoreFocus) restoreDialogFocus(returnFocus);
+}
+
+function focusFirstLevel(): void {
+  document.querySelector<HTMLButtonElement>('#level-grid button:not(:disabled)')
+    ?.focus({ preventScroll: true });
 }
 
 function configureWinOverlay(): void {
@@ -271,8 +368,7 @@ function onFail(reason: string): void {
   vibrate(40);
   const el = document.getElementById('fail-reason')!;
   el.textContent = reason === 'wall' ? 'Hit a wall.' : 'Hit another arrow.';
-  failEl.hidden = false;
-  document.getElementById('btn-fail-retry')?.focus({ preventScroll: true });
+  showDialog(failEl, 'btn-fail-retry');
   void showInterstitial('fail');
 }
 
@@ -292,8 +388,7 @@ function onWin(): void {
   configureWinOverlay();
   completeLevelWithoutWaitingForAd(
     () => {
-      winEl.hidden = false;
-      document.getElementById('btn-next')?.focus({ preventScroll: true });
+      showDialog(winEl, 'btn-next');
     },
     showInterstitial,
     playMode === 'daily' ? 'daily-complete' : 'level-complete',
@@ -391,7 +486,7 @@ function doRetry(): void {
   void showInterstitial('retry');
 }
 
-function tryUndo(fromFail = false): void {
+function tryUndo(): void {
   if (!engine) return;
   if (!engine.canUndo()) return;
   const s = state();
@@ -409,8 +504,7 @@ function tryUndo(fromFail = false): void {
   document.getElementById('reward-title')!.textContent = 'Extra undo';
   document.getElementById('reward-body')!.textContent =
     'Free undos used. Watch a placeholder ad for one more undo.';
-  if (fromFail) failEl.hidden = true;
-  rewardEl.hidden = false;
+  showDialog(rewardEl, 'btn-reward-ok');
 }
 
 function tryHint(): void {
@@ -420,17 +514,23 @@ function tryHint(): void {
   document.getElementById('reward-title')!.textContent = 'Hint';
   document.getElementById('reward-body')!.textContent =
     'Watch a placeholder rewarded ad to highlight a safe arrow.';
-  rewardEl.hidden = false;
+  showDialog(rewardEl, 'btn-reward-ok');
 }
 
 async function confirmReward(): Promise<void> {
   const action = rewardAction;
-  rewardEl.hidden = false;
-  const ok = await showRewarded(action ?? 'hint');
-  rewardEl.hidden = true;
+  if (!action) return;
+  const attempt = ++rewardAttempt;
+  const ok = await showRewarded(action);
+  if (attempt !== rewardAttempt || rewardAction !== action) return;
   rewardAction = null;
-  if (!ok || !engine) return;
+  if (!ok || !engine) {
+    closeActiveDialog();
+    showToast('Reward was not available.');
+    return;
+  }
   if (action === 'hint') {
+    closeActiveDialog();
     hintCell = engine.hint();
     render();
     announceBoard(
@@ -445,6 +545,12 @@ async function confirmReward(): Promise<void> {
     render();
     announceBoard(describeBoard(state()));
   }
+}
+
+function cancelReward(): void {
+  rewardAttempt += 1;
+  rewardAction = null;
+  closeActiveDialog();
 }
 
 function buildLevelSelect(): void {
@@ -521,22 +627,25 @@ function wire(): void {
     hideOverlays();
     updateHome();
     showScreen('home');
+    document.getElementById('btn-play')?.focus({ preventScroll: true });
   });
   document.getElementById('btn-hint')!.addEventListener('click', () => tryHint());
-  document.getElementById('btn-undo')!.addEventListener('click', () => tryUndo(false));
+  document.getElementById('btn-undo')!.addEventListener('click', () => tryUndo());
   document.getElementById('btn-retry')!.addEventListener('click', () => doRetry());
   document.getElementById('btn-play-levels')!.addEventListener('click', () => {
     hideOverlays();
     buildLevelSelect();
     showScreen('levels');
+    focusFirstLevel();
   });
 
   document.getElementById('btn-fail-retry')!.addEventListener('click', () => doRetry());
-  document.getElementById('btn-fail-undo')!.addEventListener('click', () => tryUndo(true));
+  document.getElementById('btn-fail-undo')!.addEventListener('click', () => tryUndo());
   document.getElementById('btn-fail-home')!.addEventListener('click', () => {
     hideOverlays();
     updateHome();
     showScreen('home');
+    document.getElementById('btn-play')?.focus({ preventScroll: true });
   });
 
   document.getElementById('btn-next')!.addEventListener('click', () => {
@@ -554,6 +663,7 @@ function wire(): void {
       hideOverlays();
       updateHome();
       showScreen('home');
+      document.getElementById('btn-play')?.focus({ preventScroll: true });
     }
   });
   document.getElementById('btn-share')!.addEventListener('click', () => shareWin());
@@ -561,19 +671,44 @@ function wire(): void {
     hideOverlays();
     buildLevelSelect();
     showScreen('levels');
+    focusFirstLevel();
   });
   document.getElementById('btn-win-home')!.addEventListener('click', () => {
     hideOverlays();
     updateHome();
     showScreen('home');
+    document.getElementById('btn-play')?.focus({ preventScroll: true });
   });
 
   document.getElementById('btn-reward-ok')!.addEventListener('click', () => {
     void confirmReward();
   });
   document.getElementById('btn-reward-cancel')!.addEventListener('click', () => {
-    rewardEl.hidden = true;
-    rewardAction = null;
+    cancelReward();
+  });
+
+  document.addEventListener('keydown', (event) => {
+    const dialog = activeDialog();
+    if (!dialog) return;
+    const focusable = Array.from(
+      dialog.querySelectorAll<HTMLElement>(
+        'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
+      ),
+    ).filter((element) => !element.closest('[hidden]'));
+    const result = manageDialogKeydown(
+      event,
+      focusable,
+      document.activeElement instanceof HTMLElement ? document.activeElement : null,
+    );
+    if (result === 'dismiss') {
+      if (dialog === rewardEl) {
+        rewardAttempt += 1;
+        rewardAction = null;
+      }
+      closeActiveDialog();
+    } else if (result === 'trapped' && focusable.length === 0) {
+      dialog.focus({ preventScroll: true });
+    }
   });
 
   boardAccess.addEventListener('click', (ev) => {
