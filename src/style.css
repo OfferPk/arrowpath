@@ -104,6 +104,18 @@ html, body {
   cursor: pointer;
 }
 
+.screen[data-screen="play"] .hud .icon-btn {
+  width: 44px;
+  height: 44px;
+}
+
+@media (orientation: portrait) and (max-width: 320px) {
+  #app {
+    padding-left: max(5px, env(safe-area-inset-left));
+    padding-right: max(5px, env(safe-area-inset-right));
+  }
+}
+
 .subhead {
   display: flex; align-items: center; gap: 10px; margin-bottom: 12px;
 }

@@ -364,6 +364,161 @@ try {
       }
     }
   }
+  for (const viewport of [
+    { width: 320, height: 568 },
+    { width: 360, height: 640 },
+  ]) {
+    await touchPage.setViewportSize(viewport);
+    await touchPage.waitForTimeout(80);
+    await touchPage.locator('#btn-retry').tap();
+    await touchPage.waitForTimeout(80);
+    await scan(touchPage, `portrait ${viewport.width}×${viewport.height} (Level 50 touch board)`);
+
+    const portraitLayout = await touchPage.evaluate(() => {
+      const rect = (element) => {
+        const bounds = element.getBoundingClientRect();
+        return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, bottom: bounds.bottom };
+      };
+      const cells = Array.from(document.querySelectorAll('#board-access [role="gridcell"]'), rect);
+      const controls = ['#btn-menu', '#btn-hint', '#btn-undo', '#btn-retry', '#btn-play-levels'].map((id) =>
+        rect(document.querySelector(id)),
+      );
+      return {
+        width: innerWidth,
+        height: innerHeight,
+        scrollWidth: document.documentElement.scrollWidth,
+        scrollHeight: document.documentElement.scrollHeight,
+        cellWidth: Math.min(...cells.map((cell) => cell.width)),
+        cellHeight: Math.min(...cells.map((cell) => cell.height)),
+        cells,
+        board: rect(document.querySelector('#board')),
+        hud: rect(document.querySelector('.hud')),
+        controls,
+      };
+    });
+    assert.equal(portraitLayout.cells.length, 49, 'portrait Level 50 should expose all 49 touch targets');
+    assert.ok(
+      portraitLayout.cellWidth >= 44 && portraitLayout.cellHeight >= 44,
+      `${viewport.width}×${viewport.height} portrait should provide at least 44px square Level 50 cells`,
+    );
+    assert.ok(
+      portraitLayout.controls.every((control) => control.width >= 44 && control.height >= 44),
+      `${viewport.width}×${viewport.height} portrait game controls should be at least 44px`,
+    );
+    assert.ok(
+      portraitLayout.cells.every((cell) =>
+        Math.abs(cell.width - portraitLayout.board.width / 7) < 0.1 &&
+        Math.abs(cell.height - portraitLayout.board.height / 7) < 0.1,
+      ),
+      'each portrait hit target should map to exactly one visible board cell',
+    );
+    assert.ok(
+      portraitLayout.scrollWidth <= viewport.width && portraitLayout.scrollHeight <= viewport.height,
+      `${viewport.width}×${viewport.height} portrait should not scroll`,
+    );
+    assert.ok(
+      portraitLayout.board.x >= 0 && portraitLayout.board.x + portraitLayout.board.width <= viewport.width && portraitLayout.board.bottom <= viewport.height,
+      'portrait board should remain inside the viewport',
+    );
+    assert.ok(portraitLayout.hud.bottom <= viewport.height, 'portrait HUD should remain inside the viewport');
+    assert.ok(
+      portraitLayout.controls.every((control) =>
+        control.x >= 0 && control.x + control.width <= viewport.width && control.y >= 0 && control.bottom <= viewport.height,
+      ),
+      'portrait controls should remain inside the viewport',
+    );
+    for (let i = 0; i < portraitLayout.cells.length; i += 1) {
+      for (let j = i + 1; j < portraitLayout.cells.length; j += 1) {
+        assert.ok(!overlaps(portraitLayout.cells[i], portraitLayout.cells[j]), 'portrait neighboring cells should not overlap');
+      }
+      for (const control of portraitLayout.controls) {
+        assert.ok(!overlaps(portraitLayout.cells[i], control), 'portrait cell targets should not overlap game controls');
+      }
+    }
+    for (let i = 0; i < portraitLayout.controls.length; i += 1) {
+      for (let j = i + 1; j < portraitLayout.controls.length; j += 1) {
+        assert.ok(!overlaps(portraitLayout.controls[i], portraitLayout.controls[j]), 'portrait interactive controls should not overlap');
+      }
+    }
+    assert.ok(!overlaps(portraitLayout.board, portraitLayout.hud), 'portrait board should not overlap the HUD');
+
+    const adjacentPortraitPair = await touchPage.evaluate(() => {
+      const cells = Array.from(document.querySelectorAll('#board-access [role="gridcell"]'));
+      const passive = (cell) => cell.getAttribute('aria-disabled') === 'true';
+      for (let index = 0; index < cells.length; index += 1) {
+        const x = Number(cells[index].dataset.x);
+        const y = Number(cells[index].dataset.y);
+        const right = x < 6 ? index + 1 : -1;
+        const below = y < 6 ? index + 7 : -1;
+        if (right >= 0 && passive(cells[index]) && passive(cells[right])) {
+          return { first: index, second: right, direction: 'horizontal' };
+        }
+        if (below >= 0 && passive(cells[index]) && passive(cells[below])) {
+          return { first: index, second: below, direction: 'vertical' };
+        }
+      }
+      return null;
+    });
+    assert.ok(adjacentPortraitPair, 'portrait Level 50 should provide adjacent empty/wall targets for an accuracy check');
+    const firstPortraitTarget = portraitLayout.cells[adjacentPortraitPair.first];
+    const secondPortraitTarget = portraitLayout.cells[adjacentPortraitPair.second];
+    const portraitTapPoints = adjacentPortraitPair.direction === 'horizontal'
+      ? [
+          { x: firstPortraitTarget.x + firstPortraitTarget.width - 2, y: firstPortraitTarget.y + firstPortraitTarget.height / 2 },
+          { x: secondPortraitTarget.x + 2, y: secondPortraitTarget.y + secondPortraitTarget.height / 2 },
+        ]
+      : [
+          { x: firstPortraitTarget.x + firstPortraitTarget.width / 2, y: firstPortraitTarget.y + firstPortraitTarget.height - 2 },
+          { x: secondPortraitTarget.x + secondPortraitTarget.width / 2, y: secondPortraitTarget.y + 2 },
+        ];
+    for (const [offset, point] of portraitTapPoints.entries()) {
+      await touchPage.touchscreen.tap(point.x, point.y);
+      assert.equal(
+        Number(await touchPage.evaluate(() => document.activeElement?.getAttribute('data-cell-index'))),
+        offset === 0 ? adjacentPortraitPair.first : adjacentPortraitPair.second,
+        'portrait seam taps should select the exact adjacent cell',
+      );
+    }
+
+    const beforePortraitKeyboard = await touchPage.evaluate(() => ({
+      x: Number(document.activeElement.dataset.x),
+      y: Number(document.activeElement.dataset.y),
+    }));
+    await touchPage.keyboard.press('ArrowRight');
+    assert.deepEqual(
+      await touchPage.evaluate(() => ({ x: Number(document.activeElement.dataset.x), y: Number(document.activeElement.dataset.y) })),
+      { x: Math.min(beforePortraitKeyboard.x + 1, 6), y: beforePortraitKeyboard.y },
+      'portrait arrow-key navigation should match cell selection',
+    );
+    await touchPage.keyboard.press('Home');
+    assert.equal(Number(await touchPage.evaluate(() => document.activeElement?.getAttribute('data-x'))), 0);
+    await touchPage.keyboard.press('End');
+    assert.equal(Number(await touchPage.evaluate(() => document.activeElement?.getAttribute('data-x'))), 6);
+    await touchPage.keyboard.press('Control+Home');
+    assert.deepEqual(
+      await touchPage.evaluate(() => ({ x: Number(document.activeElement?.getAttribute('data-x')), y: Number(document.activeElement?.getAttribute('data-y')) })),
+      { x: 0, y: 0 },
+    );
+    await touchPage.keyboard.press('Control+End');
+    assert.deepEqual(
+      await touchPage.evaluate(() => ({ x: Number(document.activeElement?.getAttribute('data-x')), y: Number(document.activeElement?.getAttribute('data-y')) })),
+      { x: 6, y: 6 },
+    );
+    await touchPage.keyboard.press('Tab');
+    assert.equal(await touchPage.evaluate(() => document.activeElement?.id), 'btn-undo', 'portrait Tab should reach the first game control');
+
+    const safePortraitArrow = touchPage.locator('#board-access [role="gridcell"][aria-disabled="false"][aria-label*="Path is clear to the board edge"]').first();
+    assert.ok(await safePortraitArrow.count(), 'portrait Level 50 should retain a safe arrow for keyboard firing');
+    const arrowsBeforePortraitFire = Number(await touchPage.locator('#hud-left').textContent());
+    await safePortraitArrow.focus();
+    await touchPage.keyboard.press(viewport.width === 320 ? 'Enter' : 'Space');
+    await touchPage.waitForTimeout(120);
+    const arrowsAfterPortraitFire = Number(await touchPage.locator('#hud-left').textContent());
+    assert.ok(arrowsAfterPortraitFire < arrowsBeforePortraitFire, 'portrait Enter/Space should fire the selected safe arrow');
+    console.log(
+      `PASS portrait ${viewport.width}×${viewport.height}: ${portraitLayout.cellWidth.toFixed(1)}px cells; 44px controls, adjacent-cell accuracy, no overlap/scroll, keyboard parity`,
+    );
+  }
   console.log(`PASS compact landscape touch flow: ${mobileLayout.cellWidth.toFixed(1)}px cells; 44px controls, adjacent-cell accuracy, responsive no-overlap/scroll, touch, and keyboard fit`);
   await touchContext.close();
 
