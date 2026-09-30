@@ -277,6 +277,9 @@ function updateHome(): void {
   meta.textContent = rec?.completed
     ? `Daily ${key} ✓ completed`
     : `Daily ${key} ready`;
+  const dailyButton = document.getElementById('btn-daily') as HTMLButtonElement;
+  dailyButton.disabled = Boolean(rec?.completed);
+  dailyButton.textContent = rec?.completed ? 'Daily complete' : 'Daily Challenge';
 }
 
 function updateSettingsUi(): void {

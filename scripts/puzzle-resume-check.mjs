@@ -12,6 +12,7 @@ const viteEntry = resolve(root, 'node_modules/vite/bin/vite.js');
 const chromiumPath = process.env.CHROMIUM_PATH ?? '/usr/bin/chromium';
 const PREFIX = 'arrowpath:v1:';
 const ACTIVE_KEY = `${PREFIX}active-puzzle`;
+const currentDailyKey = new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
 async function availablePort() {
   const probe = createServer();
@@ -103,25 +104,31 @@ try {
   if (process.env.CHROMIUM_PATH || existsSync(chromiumPath)) launchOptions.executablePath = chromiumPath;
   browser = await chromium.launch(launchOptions);
   context = await browser.newContext({ viewport: { width: 390, height: 844 }, colorScheme: 'dark' });
-  await context.addInitScript(({ prefix }) => {
+  await context.addInitScript(({ prefix, dailyKey }) => {
     const initializedKey = `${prefix}resume-test-initialized`;
     if (localStorage.getItem(initializedKey) === '1') return;
     localStorage.setItem(`${prefix}onboarded`, JSON.stringify({ ok: true }));
     localStorage.setItem(`${prefix}progress`, JSON.stringify({ unlocked: 3, cleared: [] }));
     localStorage.setItem(`${prefix}settings`, JSON.stringify({ muted: true, adsRemoved: false }));
-    localStorage.setItem(`${prefix}daily:2026-09-30`, JSON.stringify({ completed: false, levelId: 8 }));
+    localStorage.setItem(`${prefix}daily:${dailyKey}`, JSON.stringify({ completed: true, levelId: 8, finishedAt: '2026-09-30T08:00:00.000Z' }));
     localStorage.setItem(initializedKey, '1');
-  }, { prefix: PREFIX });
+  }, { prefix: PREFIX, dailyKey: currentDailyKey });
 
   const page = await context.newPage();
   await page.goto(baseUrl, { waitUntil: 'networkidle' });
   await page.locator('[data-screen="home"]:not([hidden])').waitFor();
   const resumeStatus = page.locator('#toast');
   assert.equal(await resumeStatus.isVisible(), false, 'a fresh visit must not announce a restored run');
+  assert.equal(await page.locator('#home-daily-meta').textContent(), `Daily ${currentDailyKey} ✓ completed`);
+  assert.equal(await page.locator('#btn-daily').textContent(), 'Daily complete');
+  assert.equal(await page.locator('#btn-daily').isDisabled(), true, 'a completed daily challenge must not look actionable');
+  await page.locator('#btn-play').focus();
+  await page.keyboard.press('Tab');
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'btn-levels', 'keyboard navigation should skip the disabled completed-daily action');
   await scanAxe(page, 'fresh Home screen');
   const progressBefore = await page.evaluate((key) => localStorage.getItem(key), `${PREFIX}progress`);
   const settingsBefore = await page.evaluate((key) => localStorage.getItem(key), `${PREFIX}settings`);
-  const dailyBefore = await page.evaluate((key) => localStorage.getItem(key), `${PREFIX}daily:2026-09-30`);
+  const dailyBefore = await page.evaluate((key) => localStorage.getItem(key), `${PREFIX}daily:${currentDailyKey}`);
 
   await page.locator('#btn-levels').click();
   assert.equal(
@@ -161,6 +168,17 @@ try {
   assert.equal(await page.locator('#btn-play').textContent(), 'Resume');
   assert.deepEqual(await readSnapshot(page), levelTwoAfterMove);
   const storageBeforeHomeScreenReturns = await readAllStorage(page);
+  assert.equal(await page.locator('#btn-daily').textContent(), 'Daily complete');
+  assert.equal(await page.locator('#btn-daily').isDisabled(), true);
+  await page.locator('#btn-play').focus();
+  await page.keyboard.press('Tab');
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'btn-levels');
+  assert.deepEqual(
+    await readAllStorage(page),
+    storageBeforeHomeScreenReturns,
+    'the disabled completed-daily action must not change the active run or any saved record',
+  );
+  assert.deepEqual(await readSnapshot(page), levelTwoAfterMove, 'the completed-daily Home state must preserve board and undo history');
   await page.locator('#btn-settings').click();
   await page.locator('[data-screen="settings"]:not([hidden])').waitFor();
   await page.locator('#btn-settings-back').click();
@@ -282,7 +300,7 @@ try {
   );
   assert.equal(await page.evaluate((key) => localStorage.getItem(key), `${PREFIX}progress`), progressBefore);
   assert.equal(await page.evaluate((key) => localStorage.getItem(key), `${PREFIX}settings`), settingsBefore);
-  assert.equal(await page.evaluate((key) => localStorage.getItem(key), `${PREFIX}daily:2026-09-30`), dailyBefore);
+  assert.equal(await page.evaluate((key) => localStorage.getItem(key), `${PREFIX}daily:${currentDailyKey}`), dailyBefore);
   await scanAxe(page, 'restored puzzle with status');
   await page.locator('#btn-undo').click();
   await waitForState(page, { levelId: 3, arrowsRemaining: 3 });
@@ -310,7 +328,7 @@ try {
   assert.equal(completedProgress.unlocked, 4);
   assert.deepEqual(completedProgress.cleared, [3]);
   assert.equal(await page.evaluate((key) => localStorage.getItem(key), `${PREFIX}settings`), settingsBefore);
-  assert.equal(await page.evaluate((key) => localStorage.getItem(key), `${PREFIX}daily:2026-09-30`), dailyBefore);
+  assert.equal(await page.evaluate((key) => localStorage.getItem(key), `${PREFIX}daily:${currentDailyKey}`), dailyBefore);
   await page.reload({ waitUntil: 'networkidle' });
   await page.locator('[data-screen="home"]:not([hidden])').waitFor();
   assert.equal(await page.evaluate((key) => localStorage.getItem(key), ACTIVE_KEY), null);
