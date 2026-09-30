@@ -264,6 +264,23 @@ html, body {
 }
 .a2hs[hidden] { display: none !important; }
 .a2hs span { flex: 1; }
+.pwa-update {
+  position: fixed;
+  inset: auto 12px max(12px, env(safe-area-inset-bottom));
+  z-index: 19;
+  width: min(440px, calc(100% - 24px));
+  margin-inline: auto;
+  padding: 10px 12px;
+  border: 1px solid rgba(45, 226, 230, 0.42);
+  border-radius: 12px;
+  background: rgba(14, 21, 40, 0.97);
+  box-shadow: 0 0 24px rgba(45, 226, 230, 0.16);
+}
+.pwa-update[hidden] { display: none !important; }
+.pwa-update p { margin: 0 0 8px; color: var(--text); line-height: 1.4; font-size: 0.9rem; }
+.pwa-update-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.pwa-update-actions .btn { width: auto; margin: 0; }
+.pwa-update-actions .btn.ghost { border-color: rgba(139, 155, 184, 0.28); }
 
 .toast {
   position: fixed;

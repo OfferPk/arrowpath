@@ -22,6 +22,8 @@ import { completeLevelWithoutWaitingForAd } from './game/completion';
 import { drawBoard, resizeCanvas } from './ui/canvas';
 import { describeBoard, describeBoardCell } from './ui/accessibility';
 import { manageDialogKeydown } from './ui/dialog';
+import { registerSW } from 'virtual:pwa-register';
+import { getUpdateNoticePresentation } from './ui/pwa-update';
 import type { GameState, LevelDef } from './game/types';
 
 type PlayMode = 'campaign' | 'daily';
@@ -42,6 +44,12 @@ let suspendedDialog: HTMLElement | null = null;
 let suspendedDialogFocus: HTMLElement | null = null;
 let rewardAttempt = 0;
 let toastTimer = 0;
+let hasUnfinishedPuzzle = false;
+let pwaUpdateAvailable = false;
+let pwaUpdateDismissed = false;
+let pwaUpdateApplying = false;
+let pwaUpdateActivated = false;
+let updateServiceWorker: (reloadPage?: boolean) => Promise<void> = async () => {};
 
 const board = document.getElementById('board') as HTMLCanvasElement;
 const boardAccess = document.getElementById('board-access') as HTMLDivElement;
@@ -49,7 +57,11 @@ const boardAnnouncement = document.getElementById('board-announcement') as HTMLP
 const failEl = document.getElementById('overlay-fail')!;
 const winEl = document.getElementById('overlay-win')!;
 const rewardEl = document.getElementById('overlay-reward')!;
+const updateConfirmEl = document.getElementById('overlay-update')!;
 const toastEl = document.getElementById('toast')!;
+const updateNoticeEl = document.getElementById('pwa-update-notice')!;
+const updateNoticeMessage = document.getElementById('pwa-update-message')!;
+const updateNoticeButton = document.getElementById('btn-pwa-update') as HTMLButtonElement;
 
 function showScreen(name: string): void {
   document.querySelectorAll<HTMLElement>('.screen').forEach((el) => {
@@ -57,6 +69,7 @@ function showScreen(name: string): void {
   });
   const a2hs = document.getElementById('a2hs');
   if (a2hs) a2hs.hidden = name !== 'home' || sessionStorage.getItem('arrowpath:a2hs') === '1';
+  renderUpdateNotice();
 }
 
 function state() {
@@ -79,6 +92,93 @@ function showToast(msg: string): void {
   toastTimer = window.setTimeout(() => {
     toastEl.hidden = true;
   }, 1800);
+}
+
+function currentScreen(): string {
+  return document.querySelector<HTMLElement>('.screen:not([hidden])')?.dataset.screen ?? 'home';
+}
+
+function renderUpdateNotice(): void {
+  const presentation = getUpdateNoticePresentation({
+    available: pwaUpdateAvailable && !pwaUpdateDismissed,
+    screen: currentScreen(),
+    hasUnfinishedPuzzle,
+  });
+  updateNoticeEl.hidden = !presentation.visible;
+  if (!presentation.visible) return;
+  updateNoticeMessage.textContent = pwaUpdateApplying
+    ? 'Installing the update…'
+    : presentation.message;
+  updateNoticeButton.textContent = pwaUpdateApplying
+    ? 'Installing…'
+    : presentation.actionLabel;
+  updateNoticeButton.disabled = pwaUpdateApplying;
+}
+
+function onUpdateAvailable(): void {
+  pwaUpdateAvailable = true;
+  pwaUpdateDismissed = false;
+  pwaUpdateApplying = false;
+  pwaUpdateActivated = false;
+  renderUpdateNotice();
+}
+
+function onUpdateActivated(): void {
+  pwaUpdateActivated = true;
+  pwaUpdateAvailable = true;
+  pwaUpdateDismissed = false;
+  if (pwaUpdateApplying) {
+    window.location.reload();
+    return;
+  }
+  renderUpdateNotice();
+}
+
+function applyUpdate(): void {
+  if (!pwaUpdateAvailable || pwaUpdateApplying) return;
+  const presentation = getUpdateNoticePresentation({
+    available: true,
+    screen: currentScreen(),
+    hasUnfinishedPuzzle,
+  });
+  if (presentation.requiresConfirmation) {
+    const body = document.getElementById('update-confirm-body')!;
+    body.textContent = hasUnfinishedPuzzle
+      ? 'This puzzle is only in memory and is not saved. Reloading will restart this puzzle. Cleared progress and settings remain saved.'
+      : 'Reloading closes the current game screen. Cleared progress and settings remain saved.';
+    document.getElementById('btn-update-confirm')!.textContent = hasUnfinishedPuzzle
+      ? 'Restart puzzle and update'
+      : 'Reload to update';
+    showDialog(updateConfirmEl, 'btn-update-confirm');
+    return;
+  }
+  beginUpdateInstall();
+}
+
+function beginUpdateInstall(): void {
+  if (!pwaUpdateAvailable || pwaUpdateApplying) return;
+  pwaUpdateApplying = true;
+  pwaUpdateDismissed = true;
+  closeActiveDialog(false);
+  renderUpdateNotice();
+  if (pwaUpdateActivated) {
+    window.location.reload();
+    return;
+  }
+  void updateServiceWorker(true).catch(() => {
+    pwaUpdateApplying = false;
+    pwaUpdateDismissed = false;
+    showToast('The update could not be applied. Please try again.');
+    renderUpdateNotice();
+  });
+}
+
+function setupPwaUpdates(): void {
+  updateServiceWorker = registerSW({
+    immediate: true,
+    onNeedRefresh: onUpdateAvailable,
+    onNeedReload: onUpdateActivated,
+  });
 }
 
 function updateHome(): void {
@@ -213,13 +313,14 @@ function hideOverlays(): void {
   failEl.hidden = true;
   winEl.hidden = true;
   rewardEl.hidden = true;
+  updateConfirmEl.hidden = true;
   dialogReturnFocus = null;
   suspendedDialog = null;
   suspendedDialogFocus = null;
 }
 
 function activeDialog(): HTMLElement | null {
-  return [rewardEl, failEl, winEl].find((dialog) => !dialog.hidden) ?? null;
+  return [rewardEl, failEl, winEl, updateConfirmEl].find((dialog) => !dialog.hidden) ?? null;
 }
 
 function overlayFocusTarget(): HTMLElement | null {
@@ -331,6 +432,7 @@ async function startLevel(
     const progress = getProgress();
     if (id > progress.unlocked) return;
   }
+  hasUnfinishedPuzzle = true;
   playMode = mode;
   dailyKey = mode === 'daily' ? key : null;
   currentId = id;
@@ -376,6 +478,8 @@ function onFail(reason: string): void {
 
 function onWin(): void {
   vibrate(25);
+  hasUnfinishedPuzzle = false;
+  renderUpdateNotice();
   if (playMode === 'daily' && dailyKey) {
     saveDailyRecord(dailyKey, {
       completed: true,
@@ -477,6 +581,7 @@ function tryFire(x: number, y: number): void {
 
 function doRetry(): void {
   if (!engine) return;
+  hasUnfinishedPuzzle = true;
   hideOverlays();
   engine.restart();
   hintCell = null;
@@ -580,6 +685,14 @@ function buildLevelSelect(): void {
 }
 
 function wire(): void {
+  updateNoticeButton.addEventListener('click', applyUpdate);
+  document.getElementById('btn-pwa-update-later')!.addEventListener('click', () => {
+    pwaUpdateDismissed = true;
+    renderUpdateNotice();
+  });
+  document.getElementById('btn-update-confirm')!.addEventListener('click', beginUpdateInstall);
+  document.getElementById('btn-update-cancel')!.addEventListener('click', () => closeActiveDialog());
+
   document.getElementById('btn-play')!.addEventListener('click', () => {
     const p = getProgress();
     void startLevel(Math.min(p.unlocked, pack!.levels.length), 'campaign');
@@ -773,6 +886,7 @@ async function boot(): Promise<void> {
   } else {
     showScreen('home');
   }
+  setupPwaUpdates();
 }
 
 void boot();

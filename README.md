@@ -25,9 +25,12 @@ Dev server prints a local URL. With Vite `base: '/arrowpath/'`, open the **`/arr
 ```bash
 npm test          # vitest
 npm run test:a11y # axe browser scan; requires Chromium (or set CHROMIUM_PATH)
+npm run test:pwa  # production worker-update and safe-handoff browser test
 npm run build     # tsc + vite build → dist/
 npm run preview   # serve production build at /arrowpath/
 ```
+
+When a service-worker update is ready, ArrowPath waits for a user action instead of reloading automatically. An unfinished puzzle gets an explicit restart confirmation, and activating an update in one tab does not reload other open game tabs.
 
 **GitHub Pages / static host:** app is served under **`/arrowpath/`** (not site root). Asset fetches use `import.meta.env.BASE_URL`.
 
@@ -61,10 +64,10 @@ Clear all arrows to win. Hitting another arrow or a wall fails the try.
 ```
 src/game/     engine, levels loader, persist, types
 src/ads/      interstitial / rewarded / remove-ads stubs
-src/ui/       canvas renderer + accessible board and dialog behavior
+src/ui/       canvas renderer, accessible board/dialogs, and PWA update notice
 public/       levels.json (50), icons, manifest
-tests/        vitest engine + ads + accessibility regressions
-scripts/      browser-based axe accessibility scan
+tests/        vitest engine + ads + accessibility + update-policy regressions
+scripts/      axe scan + service-worker update browser regressions
 ```
 
 ## Scope (v0.1 MVP)
