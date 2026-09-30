@@ -24,6 +24,7 @@ Dev server prints a local URL. With Vite `base: '/arrowpath/'`, open the **`/arr
 
 ```bash
 npm test          # vitest
+npm run test:a11y # axe browser scan; requires Chromium (or set CHROMIUM_PATH)
 npm run build     # tsc + vite build → dist/
 npm run preview   # serve production build at /arrowpath/
 ```
@@ -48,9 +49,10 @@ Clear all arrows to win. Hitting another arrow or a wall fails the try.
 ```
 src/game/     engine, levels loader, persist, types
 src/ads/      interstitial / rewarded / remove-ads stubs
-src/ui/       canvas renderer
+src/ui/       canvas renderer + accessible board and dialog behavior
 public/       levels.json (50), icons, manifest
-tests/        vitest engine + ads coverage
+tests/        vitest engine + ads + accessibility regressions
+scripts/      browser-based axe accessibility scan
 ```
 
 ## Scope (v0.1 MVP)

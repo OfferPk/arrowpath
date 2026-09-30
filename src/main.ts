@@ -114,6 +114,8 @@ function updateHud(): void {
   const s = state();
   const label =
     playMode === 'daily' ? `D${s.levelId}` : String(s.levelId);
+  document.getElementById('play-title')!.textContent =
+    playMode === 'daily' ? `Daily challenge ${label}` : `Level ${label}`;
   document.getElementById('hud-level')!.textContent = label;
   document.getElementById('hud-left')!.textContent = String(s.arrowsRemaining);
   document.getElementById('hud-undos')!.textContent = String(s.undosLeft);
