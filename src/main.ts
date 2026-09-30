@@ -1019,6 +1019,7 @@ function wire(): void {
   document.getElementById('btn-settings')!.addEventListener('click', () => {
     updateSettingsUi();
     showScreen('settings');
+    document.getElementById('settings-title')?.focus({ preventScroll: true });
   });
   document
     .getElementById('btn-settings-back')!

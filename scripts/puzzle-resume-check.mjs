@@ -179,8 +179,26 @@ try {
     'the disabled completed-daily action must not change the active run or any saved record',
   );
   assert.deepEqual(await readSnapshot(page), levelTwoAfterMove, 'the completed-daily Home state must preserve board and undo history');
-  await page.locator('#btn-settings').click();
+  await page.locator('#btn-settings').focus();
+  await page.keyboard.press('Enter');
   await page.locator('[data-screen="settings"]:not([hidden])').waitFor();
+  assert.equal(
+    await page.evaluate(() => document.activeElement?.id),
+    'settings-title',
+    'Home → Settings should focus its heading instead of losing keyboard focus',
+  );
+  await page.keyboard.press('Tab');
+  assert.equal(
+    await page.evaluate(() => document.activeElement?.id),
+    'btn-mute',
+    'Tab after the Settings heading should reach the first setting control',
+  );
+  assert.deepEqual(
+    await readAllStorage(page),
+    storageBeforeHomeScreenReturns,
+    'entering Settings must preserve the active puzzle/undo history, progress, settings, and daily records',
+  );
+  assert.deepEqual(await readSnapshot(page), levelTwoAfterMove);
   await page.locator('#btn-settings-back').click();
   await page.locator('[data-screen="home"]:not([hidden])').waitFor();
   assert.equal(await page.evaluate(() => document.activeElement?.id), 'btn-settings');
