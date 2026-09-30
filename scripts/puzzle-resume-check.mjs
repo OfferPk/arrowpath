@@ -87,6 +87,7 @@ const server = spawn(
 );
 let browser;
 let context;
+let dailyContext;
 try {
   await waitForServer(baseUrl, server);
   const launchOptions = { headless: true, args: ['--no-sandbox'] };
@@ -257,11 +258,105 @@ try {
   assert.deepEqual(await page.evaluate((key) => JSON.parse(localStorage.getItem(key)), `${PREFIX}progress`), completedProgress);
   assert.equal(await page.evaluate((key) => localStorage.getItem(key), `${PREFIX}settings`), settingsBefore);
   console.log('PASS stale-version and corrupt-board snapshots fall back to Home without touching saved progress/settings');
+
+  const dailyContextStart = new Date('2026-09-30T18:59:59.000Z');
+  dailyContext = await browser.newContext({ viewport: { width: 390, height: 844 }, colorScheme: 'dark' });
+  const dailyPage = await dailyContext.newPage();
+  await dailyPage.clock.install({ time: dailyContextStart });
+  const dailyProgressBefore = JSON.stringify({ unlocked: 6, cleared: [1, 3] });
+  const dailySettingsBefore = JSON.stringify({ muted: true, adsRemoved: false });
+  const previousDailyRecord = JSON.stringify({
+    completed: true,
+    levelId: 4,
+    finishedAt: '2026-09-29T12:00:00.000Z',
+  });
+  await dailyPage.addInitScript(({ prefix, progress, settings, previousRecord }) => {
+    const initializedKey = `${prefix}daily-expiry-test-initialized`;
+    if (localStorage.getItem(initializedKey) === '1') return;
+    localStorage.setItem(`${prefix}onboarded`, JSON.stringify({ ok: true }));
+    localStorage.setItem(`${prefix}progress`, progress);
+    localStorage.setItem(`${prefix}settings`, settings);
+    localStorage.setItem(`${prefix}daily:2026-09-29`, previousRecord);
+    localStorage.setItem(initializedKey, '1');
+  }, {
+    prefix: PREFIX,
+    progress: dailyProgressBefore,
+    settings: dailySettingsBefore,
+    previousRecord: previousDailyRecord,
+  });
+
+  await dailyPage.goto(baseUrl, { waitUntil: 'networkidle' });
+  await dailyPage.locator('[data-screen="home"]:not([hidden])').waitFor();
+  assert.equal(await dailyPage.locator('#home-daily-meta').textContent(), 'Daily 2026-09-30 ready');
+  await dailyPage.locator('#btn-daily').click();
+  await dailyPage.locator('[data-screen="play"]:not([hidden])').waitFor();
+  const dailyRunBeforeReload = await readSnapshot(dailyPage);
+  assert.equal(dailyRunBeforeReload.mode, 'daily');
+  assert.equal(dailyRunBeforeReload.dailyKey, '2026-09-30');
+  const currentDailyRecord = await dailyPage.evaluate(
+    (key) => localStorage.getItem(key),
+    `${PREFIX}daily:2026-09-30`,
+  );
+  assert.ok(currentDailyRecord, 'starting the daily run should save its isolated daily record');
+
+  await dailyPage.reload({ waitUntil: 'networkidle' });
+  await dailyPage.locator('[data-screen="play"]:not([hidden])').waitFor();
+  assert.deepEqual(
+    await readSnapshot(dailyPage),
+    dailyRunBeforeReload,
+    'a same-day reload must preserve the active daily run',
+  );
+  const dailyRestoreStatus = dailyPage.locator('#toast');
+  await dailyRestoreStatus.waitFor({ state: 'visible' });
+  assert.equal(
+    await dailyRestoreStatus.textContent(),
+    `Resumed Daily challenge ${dailyRunBeforeReload.levelId}. 0 pours completed.`,
+  );
+  console.log('PASS same-day reload restores the exact Daily challenge run');
+
+  await dailyPage.clock.setFixedTime(new Date('2026-09-30T19:00:00.000Z'));
+  await dailyPage.reload({ waitUntil: 'networkidle' });
+  await dailyPage.locator('[data-screen="home"]:not([hidden])').waitFor();
+  assert.equal(
+    await dailyPage.locator('#home-daily-meta').textContent(),
+    'Daily 2026-10-01 ready',
+    'the challenge label must advance at midnight in Karachi',
+  );
+  assert.equal(await dailyPage.evaluate((key) => localStorage.getItem(key), ACTIVE_KEY), null);
+  assert.equal(await dailyRestoreStatus.isVisible(), false, 'an expired daily run must not be announced as restored');
+  assert.equal(
+    await dailyPage.evaluate((key) => localStorage.getItem(key), `${PREFIX}progress`),
+    dailyProgressBefore,
+    'expiring a daily run must not change cleared levels or campaign unlocks',
+  );
+  assert.equal(
+    await dailyPage.evaluate((key) => localStorage.getItem(key), `${PREFIX}settings`),
+    dailySettingsBefore,
+    'expiring a daily run must not change settings',
+  );
+  assert.equal(
+    await dailyPage.evaluate((key) => localStorage.getItem(key), `${PREFIX}daily:2026-09-30`),
+    currentDailyRecord,
+    'expiring a daily run must not alter its existing daily record',
+  );
+  assert.equal(
+    await dailyPage.evaluate((key) => localStorage.getItem(key), `${PREFIX}daily:2026-09-29`),
+    previousDailyRecord,
+    'expiring a daily run must not alter other daily records',
+  );
+  assert.equal(
+    await dailyPage.evaluate((key) => localStorage.getItem(key), `${PREFIX}daily:2026-10-01`),
+    null,
+    'the previous day’s run must not create a record for today’s challenge',
+  );
+  console.log('PASS Karachi day-boundary expiry clears only the old active run and preserves saved progress/settings/daily records');
+
   console.log('All puzzle resume browser regressions passed.');
 } catch (error) {
   console.error(error instanceof Error ? error.stack : error);
   process.exitCode = 1;
 } finally {
+  if (dailyContext) await dailyContext.close();
   if (context) await context.close();
   if (browser) await browser.close();
   server.kill('SIGTERM');
