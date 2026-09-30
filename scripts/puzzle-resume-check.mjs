@@ -98,6 +98,7 @@ const server = spawn(
 let browser;
 let context;
 let dailyContext;
+let switchContext;
 try {
   await waitForServer(baseUrl, server);
   const launchOptions = { headless: true, args: ['--no-sandbox'] };
@@ -509,12 +510,144 @@ try {
   );
   console.log('PASS Karachi day-boundary expiry clears only the old active run and preserves saved progress/settings/daily records');
 
+  switchContext = await browser.newContext({ viewport: { width: 390, height: 844 }, colorScheme: 'dark', serviceWorkers: 'block' });
+  let switchPage = await switchContext.newPage();
+  const switchPreviousDailyRecord = JSON.stringify({
+    completed: true,
+    levelId: 4,
+    finishedAt: '2026-09-29T12:00:00.000Z',
+  });
+  const switchProgress = JSON.stringify({ unlocked: 5, cleared: [1, 2] });
+  const switchSettings = JSON.stringify({ muted: true, adsRemoved: false });
+  await switchPage.addInitScript(({ prefix, progress, settings, previousRecord }) => {
+    const initializedKey = `${prefix}mode-switch-test-initialized`;
+    if (localStorage.getItem(initializedKey) === '1') return;
+    localStorage.setItem(`${prefix}onboarded`, JSON.stringify({ ok: true }));
+    localStorage.setItem(`${prefix}progress`, progress);
+    localStorage.setItem(`${prefix}settings`, settings);
+    localStorage.setItem(`${prefix}daily:2026-09-29`, previousRecord);
+    localStorage.setItem(initializedKey, '1');
+  }, {
+    prefix: PREFIX,
+    progress: switchProgress,
+    settings: switchSettings,
+    previousRecord: switchPreviousDailyRecord,
+  });
+  await switchPage.goto(baseUrl, { waitUntil: 'networkidle' });
+  await switchPage.locator('[data-screen="home"]:not([hidden])').waitFor();
+  const switchDailyKey = await switchPage.evaluate(() => {
+    const now = new Date(Date.now() + 5 * 60 * 60 * 1000);
+    return now.toISOString().slice(0, 10);
+  });
+
+  await switchPage.locator('#btn-levels').click();
+  await switchPage.getByRole('button', { name: '3', exact: true }).click();
+  await switchPage.locator('[data-screen="play"]:not([hidden])').waitFor();
+  await switchPage.locator('#board-access button[data-x="0"][data-y="0"]').click();
+  await waitForState(switchPage, { levelId: 3, arrowsRemaining: 2 });
+  const campaignBeforeDaily = await readSnapshot(switchPage);
+  assert.equal(campaignBeforeDaily.mode, 'campaign');
+  assert.equal(campaignBeforeDaily.engine.history.length, 1);
+  await switchPage.evaluate((key) => localStorage.removeItem(key), `${PREFIX}campaign-puzzle`);
+  await switchPage.reload({ waitUntil: 'networkidle' });
+  await switchPage.locator('[data-screen="play"]:not([hidden])').waitFor();
+  assert.deepEqual(await readSnapshot(switchPage), campaignBeforeDaily, 'a legacy active-only campaign save must resume intact');
+  assert.deepEqual(
+    await switchPage.evaluate((key) => JSON.parse(localStorage.getItem(key)), `${PREFIX}campaign-puzzle`),
+    campaignBeforeDaily,
+    'restoring a legacy save must seed its mode-specific snapshot before switching',
+  );
+
+  await switchPage.locator('#btn-menu').click();
+  await switchPage.locator('#btn-daily').click();
+  await switchPage.locator('[data-screen="play"]:not([hidden])').waitFor();
+  assert.equal(
+    await switchPage.locator('#overlay-puzzle-confirm').isVisible(),
+    false,
+    'switching modes should suspend, not warn that the other mode will be discarded',
+  );
+  let dailyAfterSwitch = await readSnapshot(switchPage);
+  assert.equal(dailyAfterSwitch.mode, 'daily');
+  assert.equal(dailyAfterSwitch.dailyKey, switchDailyKey);
+  const savedCampaign = await switchPage.evaluate((key) => JSON.parse(localStorage.getItem(key)), `${PREFIX}campaign-puzzle`);
+  assert.deepEqual(savedCampaign, campaignBeforeDaily, 'switching to Daily must preserve the campaign board and undo stack');
+  const dailyRecordAfterStart = await switchPage.evaluate((key) => localStorage.getItem(key), `${PREFIX}daily:${switchDailyKey}`);
+  assert.deepEqual(JSON.parse(dailyRecordAfterStart), {
+    completed: false,
+    levelId: dailyAfterSwitch.levelId,
+  }, 'starting Daily may create only its own in-progress Daily record');
+
+  await switchPage.locator('#board-access button[aria-label*="Path is clear to the board edge."]').first().click();
+  await switchPage.waitForFunction((key) => {
+    const saved = JSON.parse(localStorage.getItem(key) || 'null');
+    return saved?.mode === 'daily' && saved.engine.history.length === 1;
+  }, ACTIVE_KEY, { timeout: 5000 });
+  dailyAfterSwitch = await readSnapshot(switchPage);
+  await switchPage.reload({ waitUntil: 'networkidle' });
+  await switchPage.locator('[data-screen="play"]:not([hidden])').waitFor();
+  assert.deepEqual(await readSnapshot(switchPage), dailyAfterSwitch, 'Daily board and undo history must survive a true reload');
+
+  await switchPage.locator('#btn-menu').click();
+  await switchPage.locator('#btn-levels').click();
+  assert.equal(
+    await switchPage.evaluate(() => document.querySelector('#level-grid .current')?.textContent),
+    '3',
+    'Level Select should identify the parked campaign run while Daily is active',
+  );
+  await switchPage.getByRole('button', { name: '3', exact: true }).click();
+  await switchPage.locator('[data-screen="play"]:not([hidden])').waitFor();
+  assert.equal(await switchPage.locator('#overlay-puzzle-confirm').isVisible(), false);
+  assert.deepEqual(await readSnapshot(switchPage), campaignBeforeDaily, 'returning to campaign must restore its exact board and undo stack');
+  await switchPage.reload({ waitUntil: 'networkidle' });
+  await switchPage.locator('[data-screen="play"]:not([hidden])').waitFor();
+  assert.deepEqual(await readSnapshot(switchPage), campaignBeforeDaily, 'campaign board and undo stack must survive reload after returning');
+  await switchPage.locator('#btn-undo').click();
+  await waitForState(switchPage, { levelId: 3, arrowsRemaining: 3 });
+  let campaignAfterUndo = await readSnapshot(switchPage);
+  assert.equal(campaignAfterUndo.engine.history.length, 0);
+  assert.equal(campaignAfterUndo.engine.state.undosLeft, 2, 'Undo must operate on the restored campaign history');
+  assert.deepEqual(
+    campaignAfterUndo.engine.state.cells,
+    campaignBeforeDaily.engine.history[0].cells,
+    'campaign Undo must restore the pre-switch board',
+  );
+
+  await switchPage.locator('#btn-menu').click();
+  await switchPage.locator('#btn-daily').click();
+  await switchPage.locator('[data-screen="play"]:not([hidden])').waitFor();
+  assert.deepEqual(await readSnapshot(switchPage), dailyAfterSwitch, 'returning to Daily must restore its distinct board and undo stack');
+  await switchPage.reload({ waitUntil: 'networkidle' });
+  await switchPage.locator('[data-screen="play"]:not([hidden])').waitFor();
+  assert.deepEqual(await readSnapshot(switchPage), dailyAfterSwitch, 'Daily state must survive reload after switching back');
+  await switchPage.locator('#btn-undo').click();
+  await waitForState(switchPage, {
+    levelId: dailyAfterSwitch.levelId,
+    arrowsRemaining: dailyAfterSwitch.engine.state.arrowsRemaining + 1,
+  });
+  const dailyAfterUndo = await readSnapshot(switchPage);
+  assert.equal(dailyAfterUndo.engine.history.length, 0);
+  campaignAfterUndo = await switchPage.evaluate((key) => JSON.parse(localStorage.getItem(key)), `${PREFIX}campaign-puzzle`);
+  assert.equal(campaignAfterUndo.engine.history.length, 0, 'Daily Undo must not alter the parked campaign run');
+  assert.equal(campaignAfterUndo.engine.state.undosLeft, 2);
+  assert.equal(await switchPage.evaluate((key) => localStorage.getItem(key), `${PREFIX}progress`), switchProgress);
+  assert.equal(await switchPage.evaluate((key) => localStorage.getItem(key), `${PREFIX}settings`), switchSettings);
+  assert.equal(await switchPage.evaluate((key) => localStorage.getItem(key), `${PREFIX}daily:${switchDailyKey}`), dailyRecordAfterStart);
+  assert.equal(await switchPage.evaluate((key) => localStorage.getItem(key), `${PREFIX}daily:2026-09-29`), switchPreviousDailyRecord);
+
+  await switchPage.close();
+  switchPage = await switchContext.newPage();
+  await switchPage.goto(baseUrl, { waitUntil: 'networkidle' });
+  await switchPage.locator('[data-screen="play"]:not([hidden])').waitFor();
+  assert.deepEqual(await readSnapshot(switchPage), dailyAfterUndo, 'closing and reopening a page in the fresh context must resume Daily exactly');
+  console.log('PASS campaign/Daily snapshots, unlocks, settings, Daily records, true reload/reopen, and both Undo stacks remain isolated');
+
   console.log('All puzzle resume browser regressions passed.');
 } catch (error) {
   console.error(error instanceof Error ? error.stack : error);
   process.exitCode = 1;
 } finally {
   if (dailyContext) await dailyContext.close();
+  if (switchContext) await switchContext.close();
   if (context) await context.close();
   if (browser) await browser.close();
   server.kill('SIGTERM');

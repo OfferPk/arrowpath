@@ -2,6 +2,8 @@ import type { EngineSnapshot } from './engine';
 
 const PREFIX = 'arrowpath:v1:';
 const ACTIVE_PUZZLE_KEY = 'active-puzzle';
+const CAMPAIGN_PUZZLE_KEY = 'campaign-puzzle';
+const DAILY_PUZZLE_KEY = 'daily-puzzle';
 const ACTIVE_PUZZLE_VERSION = 1;
 
 export interface Progress {
@@ -52,43 +54,86 @@ function write(key: string, value: unknown): void {
   }
 }
 
-export function clearActivePuzzle(): void {
+function remove(key: string): void {
   try {
-    localStorage.removeItem(PREFIX + ACTIVE_PUZZLE_KEY);
+    localStorage.removeItem(PREFIX + key);
   } catch {
     /* private mode / unavailable storage */
   }
 }
 
+function puzzleKeyForMode(mode: ActivePuzzleSnapshot['mode']): string {
+  return mode === 'campaign' ? CAMPAIGN_PUZZLE_KEY : DAILY_PUZZLE_KEY;
+}
+
+function isSnapshot(value: unknown): value is ActivePuzzleSnapshot {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const parsed = value as Partial<ActivePuzzleSnapshot>;
+  return parsed.version === ACTIVE_PUZZLE_VERSION &&
+    Number.isInteger(parsed.levelId) &&
+    (parsed.levelId ?? 0) > 0 &&
+    (parsed.mode === 'campaign' || parsed.mode === 'daily') &&
+    (parsed.mode === 'campaign'
+      ? parsed.dailyKey === null
+      : typeof parsed.dailyKey === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.dailyKey)) &&
+    typeof parsed.engine === 'object' &&
+    parsed.engine !== null &&
+    !Array.isArray(parsed.engine);
+}
+
+function readPuzzleSnapshot(key: string): ActivePuzzleSnapshot | null {
+  try {
+    const raw = localStorage.getItem(PREFIX + key);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (!isSnapshot(parsed)) {
+      remove(key);
+      return null;
+    }
+    return parsed;
+  } catch {
+    remove(key);
+    return null;
+  }
+}
+
+export function clearActivePuzzle(): void {
+  const active = readPuzzleSnapshot(ACTIVE_PUZZLE_KEY);
+  remove(ACTIVE_PUZZLE_KEY);
+  if (active) remove(puzzleKeyForMode(active.mode));
+}
+
+/** Remove a parked run for one mode without disturbing the currently active mode. */
+export function clearPuzzleForMode(mode: ActivePuzzleSnapshot['mode']): void {
+  remove(puzzleKeyForMode(mode));
+}
+
 export function saveActivePuzzle(snapshot: ActivePuzzleSnapshot): void {
   write(ACTIVE_PUZZLE_KEY, snapshot);
+  write(puzzleKeyForMode(snapshot.mode), snapshot);
 }
 
 export function loadActivePuzzle(): ActivePuzzleSnapshot | null {
-  try {
-    const raw = localStorage.getItem(PREFIX + ACTIVE_PUZZLE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<ActivePuzzleSnapshot>;
-    const validEnvelope =
-      parsed.version === ACTIVE_PUZZLE_VERSION &&
-      Number.isInteger(parsed.levelId) &&
-      (parsed.levelId ?? 0) > 0 &&
-      (parsed.mode === 'campaign' || parsed.mode === 'daily') &&
-      (parsed.mode === 'campaign'
-        ? parsed.dailyKey === null
-        : typeof parsed.dailyKey === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.dailyKey)) &&
-      typeof parsed.engine === 'object' &&
-      parsed.engine !== null &&
-      !Array.isArray(parsed.engine);
-    if (!validEnvelope) {
-      clearActivePuzzle();
-      return null;
-    }
-    return parsed as ActivePuzzleSnapshot;
-  } catch {
-    clearActivePuzzle();
+  return readPuzzleSnapshot(ACTIVE_PUZZLE_KEY);
+}
+
+/** Load a parked mode snapshot, rejecting a Daily run from a different PKT day. */
+export function loadPuzzleForMode(
+  mode: ActivePuzzleSnapshot['mode'],
+  dailyKey: string | null = null,
+): ActivePuzzleSnapshot | null {
+  const key = puzzleKeyForMode(mode);
+  const snapshot = readPuzzleSnapshot(key);
+  if (!snapshot) return null;
+  const matches = snapshot.mode === mode &&
+    (mode === 'campaign'
+      ? dailyKey === null && snapshot.dailyKey === null
+      : dailyKey !== null && snapshot.dailyKey === dailyKey);
+  if (!matches) {
+    remove(key);
     return null;
   }
+  return snapshot;
 }
 
 export function getProgress(): Progress {

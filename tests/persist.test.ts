@@ -5,6 +5,7 @@ import {
   getProgress,
   getSettings,
   loadActivePuzzle,
+  loadPuzzleForMode,
   saveActivePuzzle,
   type ActivePuzzleSnapshot,
 } from '../src/game/persist';
@@ -68,6 +69,7 @@ describe('active puzzle persistence', () => {
 
     expect(JSON.parse(values.get(ACTIVE_KEY)!)).toMatchObject({ version: 1, levelId: 9 });
     expect(loadActivePuzzle()).toEqual(active);
+    expect(loadPuzzleForMode('campaign')).toEqual(active);
     expect(getProgress()).toEqual({ unlocked: 7, cleared: [1, 4] });
     expect(getSettings()).toEqual({ muted: true, adsRemoved: false });
     expect(values.get(`${PREFIX}daily:2026-09-30`)).toBe(before.get(`${PREFIX}daily:2026-09-30`));
@@ -85,6 +87,39 @@ describe('active puzzle persistence', () => {
     expect(getProgress()).toEqual({ unlocked: 5, cleared: [1, 2] });
     expect(getSettings()).toEqual({ muted: true, adsRemoved: false });
     expect(values.has(`${PREFIX}daily:2026-09-30`)).toBe(true);
+  });
+
+  it('keeps a parked campaign run while clearing the active Daily run', () => {
+    const campaign = snapshot();
+    const daily: ActivePuzzleSnapshot = {
+      ...snapshot(),
+      mode: 'daily',
+      dailyKey: '2026-09-30',
+    };
+    saveActivePuzzle(campaign);
+    saveActivePuzzle(daily);
+
+    expect(loadActivePuzzle()).toEqual(daily);
+    expect(loadPuzzleForMode('campaign')).toEqual(campaign);
+    expect(loadPuzzleForMode('daily', '2026-09-30')).toEqual(daily);
+
+    clearActivePuzzle();
+
+    expect(loadActivePuzzle()).toBeNull();
+    expect(loadPuzzleForMode('daily', '2026-09-30')).toBeNull();
+    expect(loadPuzzleForMode('campaign')).toEqual(campaign);
+  });
+
+  it('discards a parked Daily run when the requested PKT date changes', () => {
+    const daily: ActivePuzzleSnapshot = {
+      ...snapshot(),
+      mode: 'daily',
+      dailyKey: '2026-09-30',
+    };
+    saveActivePuzzle(daily);
+
+    expect(loadPuzzleForMode('daily', '2026-10-01')).toBeNull();
+    expect(values.has(`${PREFIX}daily-puzzle`)).toBe(false);
   });
 
   it('falls back safely and removes malformed JSON and unsupported snapshot versions', () => {

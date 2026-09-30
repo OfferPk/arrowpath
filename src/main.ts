@@ -12,7 +12,9 @@ import {
   getDailyRecord,
   saveDailyRecord,
   clearActivePuzzle,
+  clearPuzzleForMode,
   loadActivePuzzle,
+  loadPuzzleForMode,
   saveActivePuzzle,
   type ActivePuzzleSnapshot,
 } from './game/persist';
@@ -622,6 +624,9 @@ function configureWinOverlay(): void {
 
 function showPuzzleConfirmation(action: PendingPuzzleAction): void {
   pendingPuzzleAction = action;
+  const saved = action.kind === 'replace'
+    ? loadPuzzleForMode(action.mode, action.key)
+    : null;
   const title = document.getElementById('puzzle-confirm-title')!;
   const body = document.getElementById('puzzle-confirm-body')!;
   const confirm = document.getElementById('btn-puzzle-confirm')!;
@@ -629,6 +634,13 @@ function showPuzzleConfirmation(action: PendingPuzzleAction): void {
     title.textContent = 'Restart this puzzle?';
     body.textContent = 'Your current board and undo history will be replaced with a fresh puzzle.';
     confirm.textContent = 'Restart puzzle';
+  } else if ((!hasUnfinishedPuzzle || playMode !== action.mode) && saved) {
+    const savedLabel = saved.mode === 'daily'
+      ? `Daily ${saved.dailyKey}`
+      : `campaign level ${saved.levelId}`;
+    title.textContent = 'Replace saved puzzle?';
+    body.textContent = `Your saved ${savedLabel} board and undo history will be discarded. Start level ${action.levelId} instead?`;
+    confirm.textContent = `Start level ${action.levelId}`;
   } else {
     title.textContent = 'Change level?';
     body.textContent = `Your level ${currentId} board and undo history will be discarded. Start level ${action.levelId} instead?`;
@@ -690,12 +702,54 @@ async function startLevel(
     presentActivePuzzle();
     return;
   }
-  if (hasUnfinishedPuzzle && engine && !replacementConfirmed) {
+  const saved = loadPuzzleForMode(mode, mode === 'daily' ? key : null);
+  const savedEngine = saved?.levelId === id
+    ? Engine.fromSnapshot(level, saved.engine)
+    : null;
+  if (saved && saved.levelId === id && !savedEngine) {
+    clearPuzzleForMode(mode);
+  }
+  if (saved && saved.levelId !== id && !replacementConfirmed) {
+    showPuzzleConfirmation({ kind: 'replace', levelId: id, mode, key });
+    return;
+  }
+  if (
+    hasUnfinishedPuzzle && engine && playMode === mode &&
+    !replacementConfirmed
+  ) {
     showPuzzleConfirmation({ kind: 'replace', levelId: id, mode, key });
     return;
   }
   levelSelectReturn = null;
-  if (replacementConfirmed) clearActivePuzzle();
+  if (savedEngine && !(hasUnfinishedPuzzle && engine && playMode === mode)) {
+    engine = savedEngine;
+    currentId = id;
+    playMode = mode;
+    dailyKey = mode === 'daily' ? key : null;
+    hasUnfinishedPuzzle = true;
+    activeCellIndex = Math.max(
+      0,
+      engine.getState().cells.findIndex((cell) => cell.kind === 'arrow'),
+    );
+    hintCell = null;
+    flashPath = null;
+    hideOverlays();
+    showScreen('play');
+    layout();
+    render();
+    persistActivePuzzle();
+    announceBoard(describeBoard(state()));
+    boardAccess.querySelector<HTMLButtonElement>(`[data-cell-index="${activeCellIndex}"]`)
+      ?.focus({ preventScroll: true });
+    return;
+  }
+  if (replacementConfirmed) {
+    if (hasUnfinishedPuzzle && engine && playMode === mode) {
+      clearActivePuzzle();
+    } else {
+      clearPuzzleForMode(mode);
+    }
+  }
   hasUnfinishedPuzzle = true;
   playMode = mode;
   dailyKey = mode === 'daily' ? key : null;
@@ -1025,9 +1079,14 @@ function buildLevelSelect(): void {
   const grid = document.getElementById('level-grid')!;
   grid.innerHTML = '';
   const progress = getProgress();
+  const savedCampaign = hasUnfinishedPuzzle && playMode === 'campaign'
+    ? null
+    : loadPuzzleForMode('campaign');
   const campaignLevelToHighlight = getCampaignLevelToHighlight({
     activeCampaignLevelId:
-      hasUnfinishedPuzzle && playMode === 'campaign' ? currentId : null,
+      hasUnfinishedPuzzle && playMode === 'campaign'
+        ? currentId
+        : savedCampaign?.levelId ?? null,
     unlockedLevel: progress.unlocked,
     totalLevels: pack.levels.length,
   });
@@ -1088,6 +1147,9 @@ function resumeSavedPuzzle(): boolean {
   playMode = saved.mode;
   dailyKey = saved.mode === 'daily' ? saved.dailyKey : null;
   hasUnfinishedPuzzle = true;
+  // Older builds kept only the active pointer; mirror it into the mode slot so
+  // an in-progress run survives its first campaign/Daily switch after upgrade.
+  persistActivePuzzle();
   activeCellIndex = Math.max(
     0,
     state().cells.findIndex((cell) => cell.kind === 'arrow'),
