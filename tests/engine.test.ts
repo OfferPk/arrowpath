@@ -202,6 +202,62 @@ describe('undo', () => {
   });
 });
 
+describe('engine snapshots', () => {
+  it('restores the exact board and undo history after a successful move', () => {
+    const original = new Engine(FIXTURE);
+    original.fire(2, 0);
+    const saved = original.getSnapshot();
+    const restored = Engine.fromSnapshot(FIXTURE, saved);
+
+    expect(restored).not.toBeNull();
+    expect(restored!.getState()).toEqual(original.getState());
+    expect(restored!.canUndo()).toBe(true);
+    expect(restored!.undo(false)).toBe(true);
+    expect(restored!.getState().arrowsRemaining).toBe(2);
+    expect(restored!.getState().undosLeft).toBe(FREE_UNDOS - 1);
+    expect(original.getState().arrowsRemaining).toBe(1);
+  });
+
+  it('restores a failed board so its failure can still be undone', () => {
+    const original = new Engine(FIXTURE);
+    original.fire(0, 0);
+    const restored = Engine.fromSnapshot(FIXTURE, original.getSnapshot());
+
+    expect(restored?.getState().status).toBe('failed');
+    expect(restored?.getState().failReason).toBe('collision');
+    expect(restored?.undo(false)).toBe(true);
+    expect(restored?.getState().status).toBe('playing');
+  });
+
+  it('rejects mismatched, corrupt, solved, and impossible history snapshots', () => {
+    const original = new Engine(FIXTURE);
+    original.fire(2, 0);
+    const saved = original.getSnapshot();
+    const corruptBoard = structuredClone(saved);
+    corruptBoard.state.cells[0] = { kind: 'wall' };
+    const badCounter = structuredClone(saved);
+    badCounter.state.arrowsRemaining = 9;
+    const impossibleHistory = structuredClone(saved);
+    impossibleHistory.history[0]!.cells[0] = { kind: 'empty' };
+    const solved = structuredClone(saved);
+    solved.state.status = 'won';
+
+    expect(Engine.fromSnapshot({ ...FIXTURE, id: FIXTURE.id + 1 }, saved)).toBeNull();
+    expect(Engine.fromSnapshot(FIXTURE, corruptBoard)).toBeNull();
+    expect(Engine.fromSnapshot(FIXTURE, badCounter)).toBeNull();
+    expect(Engine.fromSnapshot(FIXTURE, impossibleHistory)).toBeNull();
+    expect(Engine.fromSnapshot(FIXTURE, solved)).toBeNull();
+  });
+
+  it('detects a pristine state separately from a board returned by undo', () => {
+    const engine = new Engine(FIXTURE);
+    expect(engine.isPristine()).toBe(true);
+    engine.fire(2, 0);
+    engine.undo(false);
+    expect(engine.isPristine()).toBe(false);
+  });
+});
+
 describe('hint safety', () => {
   it('lists only arrows with clear exit', () => {
     const state = createState(FIXTURE);

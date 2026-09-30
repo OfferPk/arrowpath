@@ -48,6 +48,91 @@ export function createState(level: LevelDef, undosLeft = FREE_UNDOS): GameState 
   };
 }
 
+export interface EngineSnapshot {
+  state: GameState;
+  history: GameState[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function normalizeStateForLevel(level: LevelDef, value: unknown): GameState | null {
+  if (!isRecord(value)) return null;
+  const candidate = value as unknown as GameState;
+  if (
+    candidate.levelId !== level.id ||
+    candidate.w !== level.w ||
+    candidate.h !== level.h ||
+    !Number.isInteger(candidate.w) ||
+    !Number.isInteger(candidate.h) ||
+    candidate.w < 1 ||
+    candidate.h < 1 ||
+    !Array.isArray(candidate.cells) ||
+    candidate.cells.length !== level.w * level.h ||
+    (candidate.status !== 'playing' && candidate.status !== 'failed') ||
+    !Number.isInteger(candidate.undosLeft) ||
+    candidate.undosLeft < 0 ||
+    candidate.undosLeft > FREE_UNDOS ||
+    !Number.isInteger(candidate.arrowsRemaining)
+  ) {
+    return null;
+  }
+  if (
+    (candidate.status === 'playing' && candidate.failReason !== undefined) ||
+    (candidate.status === 'failed' &&
+      candidate.failReason !== 'collision' &&
+      candidate.failReason !== 'wall')
+  ) {
+    return null;
+  }
+
+  const initial = levelToBoard(level);
+  const cells: BoardCell[] = [];
+  for (let i = 0; i < candidate.cells.length; i++) {
+    const cell = candidate.cells[i];
+    const original = initial[i]!;
+    if (!isRecord(cell)) return null;
+    if (original.kind === 'empty') {
+      if (cell.kind !== 'empty') return null;
+      cells.push({ kind: 'empty' });
+    } else if (original.kind === 'wall') {
+      if (cell.kind !== 'wall') return null;
+      cells.push({ kind: 'wall' });
+    } else if (cell.kind === 'empty') {
+      cells.push({ kind: 'empty' });
+    } else if (cell.kind === 'arrow' && cell.dir === original.dir) {
+      cells.push({ kind: 'arrow', dir: original.dir });
+    } else {
+      return null;
+    }
+  }
+
+  const arrowsRemaining = countArrows(cells);
+  if (candidate.arrowsRemaining !== arrowsRemaining || arrowsRemaining === 0) return null;
+  const state: GameState = {
+    levelId: level.id,
+    w: level.w,
+    h: level.h,
+    cells,
+    status: candidate.status,
+    undosLeft: candidate.undosLeft,
+    arrowsRemaining,
+    ...(candidate.status === 'failed' ? { failReason: candidate.failReason } : {}),
+  };
+  if (
+    state.status === 'failed' &&
+    !cells.some(
+      (cell, i) =>
+        cell.kind === 'arrow' &&
+        traceFire(state, i % level.w, Math.floor(i / level.w)).result === state.failReason,
+    )
+  ) {
+    return null;
+  }
+  return state;
+}
+
 export function cloneState(s: GameState): GameState {
   return {
     ...s,
@@ -186,6 +271,45 @@ export class Engine {
   private history: GameState[] = [];
   private readonly level: LevelDef;
 
+  static fromSnapshot(level: LevelDef, value: unknown): Engine | null {
+    if (!isRecord(value) || !Array.isArray(value.history)) return null;
+    const state = normalizeStateForLevel(level, value.state);
+    const initialArrowCount = countArrows(levelToBoard(level));
+    if (
+      !state ||
+      value.history.length > initialArrowCount ||
+      (state.status === 'failed' && value.history.length === 0)
+    ) {
+      return null;
+    }
+    const history: GameState[] = [];
+    for (const item of value.history) {
+      const previous = normalizeStateForLevel(level, item);
+      if (!previous || previous.status !== 'playing') return null;
+      history.push(previous);
+    }
+    const timeline = [...history, state];
+    for (let i = 1; i < timeline.length; i++) {
+      const previous = timeline[i - 1]!;
+      const next = timeline[i]!;
+      const undoDelta = previous.undosLeft - next.undosLeft;
+      const clearedDelta = previous.arrowsRemaining - next.arrowsRemaining;
+      if (
+        undoDelta < 0 ||
+        undoDelta > 1 ||
+        (clearedDelta !== 1 && clearedDelta !== 0) ||
+        (clearedDelta === 0 && next.status !== 'failed') ||
+        (clearedDelta === 1 && next.status !== 'playing')
+      ) {
+        return null;
+      }
+    }
+    const engine = new Engine(level);
+    engine.state = state;
+    engine.history = history;
+    return engine;
+  }
+
   constructor(level: LevelDef) {
     this.level = level;
     this.state = createState(level);
@@ -197,6 +321,27 @@ export class Engine {
 
   getLevel(): LevelDef {
     return this.level;
+  }
+
+  getSnapshot(): EngineSnapshot {
+    return {
+      state: cloneState(this.state),
+      history: this.history.map(cloneState),
+    };
+  }
+
+  isPristine(): boolean {
+    const initial = createState(this.level);
+    return (
+      this.history.length === 0 &&
+      this.state.status === 'playing' &&
+      this.state.undosLeft === FREE_UNDOS &&
+      this.state.cells.every((cell, index) => {
+        const original = initial.cells[index]!;
+        return cell.kind === original.kind &&
+          (cell.kind !== 'arrow' || (original.kind === 'arrow' && cell.dir === original.dir));
+      })
+    );
   }
 
   restart(): void {

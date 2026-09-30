@@ -72,7 +72,7 @@ async function ensureControlledPage(page) {
   }
   // Workbox must observe an existing controller to classify the next install as an update.
   await page.reload({ waitUntil: 'networkidle' });
-  await page.locator('[data-screen="home"]:not([hidden])').waitFor();
+  await page.locator('[data-screen="home"]:not([hidden]), [data-screen="play"]:not([hidden])').waitFor();
   await page.waitForFunction(() => Boolean(navigator.serviceWorker?.controller), null, { timeout: 15000 });
 }
 
@@ -208,9 +208,9 @@ try {
   // Open two active puzzle tabs before a second worker update to verify cross-tab safety.
   const secondPage = await context.newPage();
   await secondPage.goto(baseUrl, { waitUntil: 'networkidle' });
-  await secondPage.locator('[data-screen="home"]:not([hidden])').waitFor();
+  await secondPage.locator('[data-screen="home"]:not([hidden]), [data-screen="play"]:not([hidden])').waitFor();
   await ensureControlledPage(secondPage);
-  await secondPage.locator('#btn-play').click();
+  await secondPage.locator('[data-screen="play"]:not([hidden])').waitFor();
   await secondPage.locator('#board-access [role="gridcell"]').first().waitFor();
   const secondPageTime = await secondPage.evaluate(() => performance.timeOrigin);
   const secondLeftBefore = await secondPage.locator('#hud-left').textContent();
@@ -270,7 +270,7 @@ try {
 
   await page.locator('#btn-pwa-update').click();
   await page.locator('#overlay-update:not([hidden])').waitFor();
-  assert.match(await page.locator('#update-confirm-body').textContent() ?? '', /restart.*puzzle/i);
+  assert.match(await page.locator('#update-confirm-body').textContent() ?? '', /saved.*resume/i);
   await scanAxe(page, 'update confirmation');
   assert.equal(await page.evaluate(() => performance.timeOrigin), playTime, 'opening update confirmation must not reload');
   await page.locator('#btn-update-cancel').click();
@@ -285,7 +285,8 @@ try {
   const confirmedPageTime = await page.evaluate(() => performance.timeOrigin);
   await page.locator('#btn-update-confirm').click();
   await expectReload(page, confirmedPageTime);
-  await page.locator('[data-screen="home"]:not([hidden])').waitFor();
+  await page.locator('[data-screen="play"]:not([hidden])').waitFor();
+  assert.equal(await page.locator('#hud-left').textContent(), leftBefore, 'a confirmed update reload must restore the saved puzzle');
   await secondPage.locator('#pwa-update-notice:not([hidden])').waitFor({ timeout: 15000 });
   assert.equal(await secondPage.evaluate(() => performance.timeOrigin), secondPageTime, 'another tab must stay open when this tab accepts the update');
   assert.equal(await secondPage.locator('#hud-left').textContent(), secondLeftBefore, 'another tab keeps its unfinished puzzle after worker activation');
@@ -298,8 +299,9 @@ try {
   const secondConfirmedTime = await secondPage.evaluate(() => performance.timeOrigin);
   await secondPage.locator('#btn-update-confirm').click();
   await expectReload(secondPage, secondConfirmedTime);
-  await secondPage.locator('[data-screen="home"]:not([hidden])').waitFor();
-  console.log('PASS explicit consent: each active puzzle reloads only after its own user confirms its restart');
+  await secondPage.locator('[data-screen="play"]:not([hidden])').waitFor();
+  assert.equal(await secondPage.locator('#hud-left').textContent(), secondLeftBefore, 'the second confirmed update reload must restore its saved puzzle');
+  console.log('PASS explicit consent: each active puzzle reloads only after its own user confirms, then resumes');
   await context.close();
   console.log('All PWA update browser regressions passed.');
 } catch (error) {

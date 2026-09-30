@@ -141,9 +141,17 @@
       <div id="overlay-update" class="overlay" role="dialog" aria-modal="true" aria-labelledby="update-confirm-title" aria-describedby="update-confirm-body" tabindex="-1" hidden>
         <div class="panel">
           <h2 id="update-confirm-title">Install update?</h2>
-          <p class="go-meta" id="update-confirm-body">Reloading this page can restart an unfinished puzzle. Cleared progress remains saved.</p>
-          <button type="button" class="btn primary" id="btn-update-confirm">Restart puzzle and update</button>
+          <p class="go-meta" id="update-confirm-body">An unfinished puzzle saved on this device will resume after reloading. Cleared progress remains saved.</p>
+          <button type="button" class="btn primary" id="btn-update-confirm">Resume puzzle and update</button>
           <button type="button" class="btn ghost" id="btn-update-cancel">Keep playing</button>
+        </div>
+      </div>
+      <div id="overlay-puzzle-confirm" class="overlay" role="dialog" aria-modal="true" aria-labelledby="puzzle-confirm-title" aria-describedby="puzzle-confirm-body" tabindex="-1" hidden>
+        <div class="panel">
+          <h2 id="puzzle-confirm-title">Restart puzzle?</h2>
+          <p class="go-meta" id="puzzle-confirm-body">Restart this puzzle from the beginning?</p>
+          <button type="button" class="btn primary" id="btn-puzzle-confirm">Restart puzzle</button>
+          <button type="button" class="btn ghost" id="btn-puzzle-cancel">Keep playing</button>
         </div>
       </div>
     </main>

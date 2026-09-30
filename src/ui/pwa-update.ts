@@ -29,9 +29,11 @@ export function getUpdateNoticePresentation(
   return {
     visible: true,
     requiresConfirmation,
-    message: requiresConfirmation
-      ? 'An update is ready. Review before reloading; an unfinished puzzle will restart.'
-      : 'A game update is ready. Reload when you’re ready to install it.',
+    message: input.hasUnfinishedPuzzle
+      ? 'An update is ready. Review before reloading; your unfinished puzzle will resume afterward.'
+      : requiresConfirmation
+        ? 'A game update is ready. Review before reloading to close the current game screen.'
+        : 'A game update is ready. Reload when you’re ready to install it.',
     actionLabel: requiresConfirmation ? 'Review update' : 'Reload to update',
   };
 }

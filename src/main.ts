@@ -11,6 +11,10 @@ import {
   setOnboarded,
   getDailyRecord,
   saveDailyRecord,
+  clearActivePuzzle,
+  loadActivePuzzle,
+  saveActivePuzzle,
+  type ActivePuzzleSnapshot,
 } from './game/persist';
 import {
   showInterstitial,
@@ -52,6 +56,10 @@ let pwaUpdateActivated = false;
 let updateServiceWorker: (reloadPage?: boolean) => Promise<void> = async () => {};
 let foregroundUpdateCheckTimer = 0;
 let foregroundUpdateCheck: Promise<void> | null = null;
+type PendingPuzzleAction =
+  | { kind: 'restart' }
+  | { kind: 'replace'; levelId: number; mode: PlayMode; key: string | null };
+let pendingPuzzleAction: PendingPuzzleAction | null = null;
 
 const board = document.getElementById('board') as HTMLCanvasElement;
 const boardAccess = document.getElementById('board-access') as HTMLDivElement;
@@ -60,6 +68,7 @@ const failEl = document.getElementById('overlay-fail')!;
 const winEl = document.getElementById('overlay-win')!;
 const rewardEl = document.getElementById('overlay-reward')!;
 const updateConfirmEl = document.getElementById('overlay-update')!;
+const puzzleConfirmEl = document.getElementById('overlay-puzzle-confirm')!;
 const toastEl = document.getElementById('toast')!;
 const updateNoticeEl = document.getElementById('pwa-update-notice')!;
 const updateNoticeMessage = document.getElementById('pwa-update-message')!;
@@ -76,6 +85,21 @@ function showScreen(name: string): void {
 
 function state() {
   return engine!.getState();
+}
+
+function persistActivePuzzle(): void {
+  if (!engine || !hasUnfinishedPuzzle) {
+    clearActivePuzzle();
+    return;
+  }
+  const snapshot: ActivePuzzleSnapshot = {
+    version: 1,
+    levelId: currentId,
+    mode: playMode,
+    dailyKey: playMode === 'daily' ? dailyKey : null,
+    engine: engine.getSnapshot(),
+  };
+  saveActivePuzzle(snapshot);
 }
 
 function vibrate(ms: number): void {
@@ -146,10 +170,10 @@ function applyUpdate(): void {
   if (presentation.requiresConfirmation) {
     const body = document.getElementById('update-confirm-body')!;
     body.textContent = hasUnfinishedPuzzle
-      ? 'This puzzle is only in memory and is not saved. Reloading will restart this puzzle. Cleared progress and settings remain saved.'
+      ? 'Your unfinished puzzle is saved on this device and will resume after reloading, including its undo history. Cleared progress and settings remain saved.'
       : 'Reloading closes the current game screen. Cleared progress and settings remain saved.';
     document.getElementById('btn-update-confirm')!.textContent = hasUnfinishedPuzzle
-      ? 'Restart puzzle and update'
+      ? 'Resume puzzle and update'
       : 'Reload to update';
     showDialog(updateConfirmEl, 'btn-update-confirm');
     return;
@@ -210,8 +234,11 @@ function updateHome(): void {
     `${cleared} cleared · unlocked ${p.unlocked}/${total}`;
 
   const playBtn = document.getElementById('btn-play')!;
-  playBtn.textContent =
-    p.unlocked > 1 || p.cleared.length > 0 ? 'Continue' : 'Play';
+  playBtn.textContent = hasUnfinishedPuzzle
+    ? 'Resume'
+    : p.unlocked > 1 || p.cleared.length > 0
+      ? 'Continue'
+      : 'Play';
 
   const key = dailyKeyKarachi();
   const rec = getDailyRecord(key);
@@ -362,13 +389,15 @@ function hideOverlays(): void {
   winEl.hidden = true;
   rewardEl.hidden = true;
   updateConfirmEl.hidden = true;
+  puzzleConfirmEl.hidden = true;
+  pendingPuzzleAction = null;
   dialogReturnFocus = null;
   suspendedDialog = null;
   suspendedDialogFocus = null;
 }
 
 function activeDialog(): HTMLElement | null {
-  return [rewardEl, failEl, winEl, updateConfirmEl].find((dialog) => !dialog.hidden) ?? null;
+  return [rewardEl, failEl, winEl, updateConfirmEl, puzzleConfirmEl].find((dialog) => !dialog.hidden) ?? null;
 }
 
 function overlayFocusTarget(): HTMLElement | null {
@@ -430,8 +459,9 @@ function closeActiveDialog(restoreFocus = true): void {
   const dialog = activeDialog();
   if (!dialog) return;
   dialog.hidden = true;
+  if (dialog === puzzleConfirmEl) pendingPuzzleAction = null;
 
-  if (dialog === rewardEl && suspendedDialog) {
+  if (suspendedDialog) {
     const parent = suspendedDialog;
     const parentFocus = suspendedDialogFocus;
     suspendedDialog = null;
@@ -468,10 +498,57 @@ function configureWinOverlay(): void {
   }
 }
 
+function showPuzzleConfirmation(action: PendingPuzzleAction): void {
+  pendingPuzzleAction = action;
+  const title = document.getElementById('puzzle-confirm-title')!;
+  const body = document.getElementById('puzzle-confirm-body')!;
+  const confirm = document.getElementById('btn-puzzle-confirm')!;
+  if (action.kind === 'restart') {
+    title.textContent = 'Restart this puzzle?';
+    body.textContent = 'Your current board and undo history will be replaced with a fresh puzzle.';
+    confirm.textContent = 'Restart puzzle';
+  } else {
+    title.textContent = 'Change level?';
+    body.textContent = `Your level ${currentId} board and undo history will be discarded. Start level ${action.levelId} instead?`;
+    confirm.textContent = `Start level ${action.levelId}`;
+  }
+  showDialog(puzzleConfirmEl, 'btn-puzzle-confirm');
+}
+
+function presentActivePuzzle(): void {
+  if (!engine) return;
+  hideOverlays();
+  showScreen('play');
+  layout();
+  render();
+  announceBoard(describeBoard(state()));
+  if (state().status === 'failed') {
+    const reason = state().failReason === 'wall' ? 'Hit a wall.' : 'Hit another arrow.';
+    document.getElementById('fail-reason')!.textContent = reason;
+    showDialog(failEl, 'btn-fail-retry');
+  } else {
+    boardAccess.querySelector<HTMLButtonElement>(`[data-cell-index="${activeCellIndex}"]`)
+      ?.focus({ preventScroll: true });
+  }
+}
+
+function confirmPuzzleAction(): void {
+  const action = pendingPuzzleAction;
+  if (!action) return;
+  pendingPuzzleAction = null;
+  closeActiveDialog(false);
+  if (action.kind === 'restart') {
+    restartPuzzle();
+  } else {
+    void startLevel(action.levelId, action.mode, action.key, true);
+  }
+}
+
 async function startLevel(
   id: number,
   mode: PlayMode = 'campaign',
   key: string | null = null,
+  replacementConfirmed = false,
 ): Promise<void> {
   if (!pack) return;
   const level = getLevel(pack, id);
@@ -480,11 +557,29 @@ async function startLevel(
     const progress = getProgress();
     if (id > progress.unlocked) return;
   }
+  const sameActiveRun =
+    hasUnfinishedPuzzle &&
+    engine !== null &&
+    currentId === id &&
+    playMode === mode &&
+    dailyKey === (mode === 'daily' ? key : null);
+  if (sameActiveRun) {
+    presentActivePuzzle();
+    return;
+  }
+  if (hasUnfinishedPuzzle && engine && !replacementConfirmed) {
+    showPuzzleConfirmation({ kind: 'replace', levelId: id, mode, key });
+    return;
+  }
+  if (replacementConfirmed) clearActivePuzzle();
   hasUnfinishedPuzzle = true;
   playMode = mode;
   dailyKey = mode === 'daily' ? key : null;
   currentId = id;
   engine = new Engine(level);
+  if (mode === 'daily' && dailyKey) {
+    saveDailyRecord(dailyKey, { completed: false, levelId: id });
+  }
   activeCellIndex = Math.max(
     0,
     engine.getState().cells.findIndex((cell) => cell.kind === 'arrow'),
@@ -495,6 +590,7 @@ async function startLevel(
   showScreen('play');
   layout();
   render();
+  persistActivePuzzle();
   announceBoard('');
   boardAccess.querySelector<HTMLButtonElement>(`[data-cell-index="${activeCellIndex}"]`)
     ?.focus({ preventScroll: true });
@@ -511,8 +607,6 @@ function startDaily(): void {
     showToast('Daily already done — Continue campaign');
     return;
   }
-  // Persist chosen levelId early so re-entry is stable even mid-attempt
-  saveDailyRecord(key, { completed: false, levelId });
   void startLevel(levelId, 'daily', key);
 }
 
@@ -527,6 +621,7 @@ function onFail(reason: string): void {
 function onWin(): void {
   vibrate(25);
   hasUnfinishedPuzzle = false;
+  clearActivePuzzle();
   renderUpdateNotice();
   if (playMode === 'daily' && dailyKey) {
     saveDailyRecord(dailyKey, {
@@ -608,6 +703,7 @@ function tryFire(x: number, y: number): void {
     render();
     if (!result.ok) {
       if (result.reason === 'collision' || result.reason === 'wall') {
+        persistActivePuzzle();
         const blocker = result.reason === 'wall' ? 'a wall' : 'another arrow';
         announceBoard(`Arrow at row ${y + 1}, column ${x + 1} failed: its path hit ${blocker}.`);
         onFail(result.reason);
@@ -615,9 +711,11 @@ function tryFire(x: number, y: number): void {
       return;
     }
     if (result.won) {
+      clearActivePuzzle();
       announceBoard('Board cleared. All arrows have left the board.');
       void onWin();
     } else {
+      persistActivePuzzle();
       const remaining = result.state.arrowsRemaining;
       const arrowWord = remaining === 1 ? 'arrow' : 'arrows';
       const remainVerb = remaining === 1 ? 'remains' : 'remain';
@@ -629,12 +727,23 @@ function tryFire(x: number, y: number): void {
 
 function doRetry(): void {
   if (!engine) return;
+  if (!engine.isPristine()) {
+    showPuzzleConfirmation({ kind: 'restart' });
+    return;
+  }
+  restartPuzzle();
+}
+
+function restartPuzzle(): void {
+  if (!engine) return;
+  clearActivePuzzle();
   hasUnfinishedPuzzle = true;
   hideOverlays();
   engine.restart();
   hintCell = null;
   flashPath = null;
   render();
+  persistActivePuzzle();
   boardAccess.querySelector<HTMLButtonElement>(`[data-cell-index="${activeCellIndex}"]`)
     ?.focus({ preventScroll: true });
   announceBoard(describeBoard(state()));
@@ -650,6 +759,7 @@ function tryUndo(): void {
     hideOverlays();
     hintCell = null;
     render();
+    persistActivePuzzle();
     boardAccess.querySelector<HTMLButtonElement>(`[data-cell-index="${activeCellIndex}"]`)
       ?.focus({ preventScroll: true });
     announceBoard(describeBoard(state()));
@@ -698,6 +808,7 @@ async function confirmReward(): Promise<void> {
     hideOverlays();
     hintCell = null;
     render();
+    persistActivePuzzle();
     announceBoard(describeBoard(state()));
   }
 }
@@ -732,6 +843,53 @@ function buildLevelSelect(): void {
   }
 }
 
+function resumeSavedPuzzle(): boolean {
+  const saved = loadActivePuzzle();
+  if (!saved || !pack) return false;
+  const level = getLevel(pack, saved.levelId);
+  if (!level) {
+    clearActivePuzzle();
+    return false;
+  }
+  if (saved.mode === 'campaign') {
+    if (saved.levelId > getProgress().unlocked) {
+      clearActivePuzzle();
+      return false;
+    }
+  } else {
+    const key = saved.dailyKey;
+    if (
+      !key ||
+      key !== dailyKeyKarachi() ||
+      saved.levelId !== dailyLevelId(key, pack.levels.length) ||
+      getDailyRecord(key)?.completed
+    ) {
+      clearActivePuzzle();
+      return false;
+    }
+  }
+  const restored = Engine.fromSnapshot(level, saved.engine);
+  if (!restored) {
+    clearActivePuzzle();
+    return false;
+  }
+
+  engine = restored;
+  currentId = saved.levelId;
+  playMode = saved.mode;
+  dailyKey = saved.mode === 'daily' ? saved.dailyKey : null;
+  hasUnfinishedPuzzle = true;
+  activeCellIndex = Math.max(
+    0,
+    state().cells.findIndex((cell) => cell.kind === 'arrow'),
+  );
+  hintCell = null;
+  flashPath = null;
+  updateHome();
+  presentActivePuzzle();
+  return true;
+}
+
 function wire(): void {
   updateNoticeButton.addEventListener('click', applyUpdate);
   document.getElementById('btn-pwa-update-later')!.addEventListener('click', () => {
@@ -740,8 +898,14 @@ function wire(): void {
   });
   document.getElementById('btn-update-confirm')!.addEventListener('click', beginUpdateInstall);
   document.getElementById('btn-update-cancel')!.addEventListener('click', () => closeActiveDialog());
+  document.getElementById('btn-puzzle-confirm')!.addEventListener('click', confirmPuzzleAction);
+  document.getElementById('btn-puzzle-cancel')!.addEventListener('click', () => closeActiveDialog());
 
   document.getElementById('btn-play')!.addEventListener('click', () => {
+    if (engine && hasUnfinishedPuzzle) {
+      presentActivePuzzle();
+      return;
+    }
     const p = getProgress();
     void startLevel(Math.min(p.unlocked, pack!.levels.length), 'campaign');
   });
@@ -934,6 +1098,7 @@ async function boot(): Promise<void> {
   } else {
     showScreen('home');
   }
+  resumeSavedPuzzle();
   setupPwaUpdates();
 }
 

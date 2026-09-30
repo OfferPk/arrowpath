@@ -37,7 +37,7 @@ describe('PWA update handoff policy', () => {
     expect(view.visible).toBe(true);
     expect(view.requiresConfirmation).toBe(true);
     expect(view.actionLabel).toBe('Review update');
-    expect(view.message).toContain('unfinished puzzle will restart');
+    expect(view.message).toContain('unfinished puzzle will resume');
   });
 
   it('requires confirmation while the game screen is open even after a clear', () => {
@@ -48,6 +48,7 @@ describe('PWA update handoff policy', () => {
     });
     expect(view.requiresConfirmation).toBe(true);
     expect(view.actionLabel).toBe('Review update');
+    expect(view.message).toContain('close the current game screen');
   });
 
   it('keeps the confirmation guard in settings when an unfinished puzzle remains in memory', () => {

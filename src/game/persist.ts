@@ -1,4 +1,8 @@
+import type { EngineSnapshot } from './engine';
+
 const PREFIX = 'arrowpath:v1:';
+const ACTIVE_PUZZLE_KEY = 'active-puzzle';
+const ACTIVE_PUZZLE_VERSION = 1;
 
 export interface Progress {
   /** Highest level unlocked (1-based). Level 1 always unlocked. */
@@ -19,6 +23,14 @@ export interface DailyRecord {
   finishedAt?: string;
 }
 
+export interface ActivePuzzleSnapshot {
+  version: 1;
+  levelId: number;
+  mode: 'campaign' | 'daily';
+  dailyKey: string | null;
+  engine: EngineSnapshot;
+}
+
 const DEFAULT_PROGRESS: Progress = { unlocked: 1, cleared: [] };
 const DEFAULT_SETTINGS: Settings = { muted: false, adsRemoved: false };
 
@@ -37,6 +49,45 @@ function write(key: string, value: unknown): void {
     localStorage.setItem(PREFIX + key, JSON.stringify(value));
   } catch {
     /* quota / private mode */
+  }
+}
+
+export function clearActivePuzzle(): void {
+  try {
+    localStorage.removeItem(PREFIX + ACTIVE_PUZZLE_KEY);
+  } catch {
+    /* private mode / unavailable storage */
+  }
+}
+
+export function saveActivePuzzle(snapshot: ActivePuzzleSnapshot): void {
+  write(ACTIVE_PUZZLE_KEY, snapshot);
+}
+
+export function loadActivePuzzle(): ActivePuzzleSnapshot | null {
+  try {
+    const raw = localStorage.getItem(PREFIX + ACTIVE_PUZZLE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<ActivePuzzleSnapshot>;
+    const validEnvelope =
+      parsed.version === ACTIVE_PUZZLE_VERSION &&
+      Number.isInteger(parsed.levelId) &&
+      (parsed.levelId ?? 0) > 0 &&
+      (parsed.mode === 'campaign' || parsed.mode === 'daily') &&
+      (parsed.mode === 'campaign'
+        ? parsed.dailyKey === null
+        : typeof parsed.dailyKey === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.dailyKey)) &&
+      typeof parsed.engine === 'object' &&
+      parsed.engine !== null &&
+      !Array.isArray(parsed.engine);
+    if (!validEnvelope) {
+      clearActivePuzzle();
+      return null;
+    }
+    return parsed as ActivePuzzleSnapshot;
+  } catch {
+    clearActivePuzzle();
+    return null;
   }
 }
 

@@ -152,6 +152,11 @@ try {
   assert.ok(await page.evaluate(() => document.activeElement?.closest('#board-access') !== null), 'closing failure dialog should restore focus to the board');
 
   await page.locator('#btn-retry').click();
+  await page.locator('#overlay-puzzle-confirm:not([hidden])').waitFor();
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'btn-puzzle-confirm', 'restart confirmation should receive initial focus');
+  await scan(page, 'restart confirmation');
+  await page.locator('#btn-puzzle-confirm').click();
+  await page.locator('#overlay-puzzle-confirm').waitFor({ state: 'hidden' });
   const safeAfterRetry = page.locator('#board-access [role="gridcell"][aria-disabled="false"][aria-label*="Path is clear to the board edge"]').first();
   assert.ok(await safeAfterRetry.count(), 'Level 2 should retain a safe arrow after retry');
   await safeAfterRetry.focus();
@@ -371,6 +376,10 @@ try {
     await touchPage.setViewportSize(viewport);
     await touchPage.waitForTimeout(80);
     await touchPage.locator('#btn-retry').tap();
+    if (await touchPage.locator('#overlay-puzzle-confirm').isVisible()) {
+      await touchPage.locator('#btn-puzzle-confirm').tap();
+      await touchPage.locator('#overlay-puzzle-confirm').waitFor({ state: 'hidden' });
+    }
     await touchPage.waitForTimeout(80);
     await scan(touchPage, `portrait ${viewport.width}×${viewport.height} (Level 50 touch board)`);
 
