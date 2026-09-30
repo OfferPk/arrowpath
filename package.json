@@ -12,6 +12,7 @@
     "gen:levels": "node scripts/gen-levels.mjs",
     "test:a11y": "node scripts/a11y-scan.mjs",
     "test:movement": "node scripts/arrow-movement-check.mjs",
+    "test:reduced-motion": "node scripts/reduced-motion-check.mjs",
     "test:resume": "node scripts/puzzle-resume-check.mjs",
     "test:daily-pointer": "node scripts/daily-pointer-doubleclick-check.mjs",
     "test:pwa": "npm run build && node scripts/pwa-update-check.mjs",

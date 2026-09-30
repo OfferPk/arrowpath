@@ -930,10 +930,16 @@ function tryFire(x: number, y: number): void {
   };
   flashPath = traced.path;
 
+  const prefersReducedMotion = window.matchMedia(
+    '(prefers-reduced-motion: reduce)',
+  ).matches;
+
   const animate = (now: number): void => {
     if (!moveAnimation) return;
     if (moveAnimation.startedAt === 0) moveAnimation.startedAt = now;
-    moveAnimation.progress = Math.min(1, (now - moveAnimation.startedAt) / 270);
+    moveAnimation.progress = prefersReducedMotion
+      ? 1
+      : Math.min(1, (now - moveAnimation.startedAt) / 270);
     render();
     if (moveAnimation.progress < 1) {
       moveAnimationFrame = window.requestAnimationFrame(animate);
@@ -979,6 +985,10 @@ function tryFire(x: number, y: number): void {
       vibrate(12);
     }
   };
+  if (prefersReducedMotion) {
+    animate(window.performance.now());
+    return;
+  }
   moveAnimationFrame = window.requestAnimationFrame(animate);
 }
 
