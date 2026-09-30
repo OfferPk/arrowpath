@@ -992,6 +992,7 @@ function wire(): void {
     setOnboarded();
     updateHome();
     showScreen('home');
+    document.getElementById('btn-howto')?.focus({ preventScroll: true });
   });
   document.getElementById('btn-settings')!.addEventListener('click', () => {
     updateSettingsUi();
@@ -1002,6 +1003,7 @@ function wire(): void {
     .addEventListener('click', () => {
       updateHome();
       showScreen('home');
+      document.getElementById('btn-settings')?.focus({ preventScroll: true });
     });
   document
     .getElementById('btn-levels-back')!

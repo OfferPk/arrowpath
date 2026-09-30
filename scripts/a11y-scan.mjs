@@ -82,6 +82,12 @@ try {
   if (await page.locator('#btn-howto-ok').isVisible()) {
     await scan(page, 'how-to / onboarding');
     await page.locator('#btn-howto-ok').click();
+    await page.locator('[data-screen="home"]:not([hidden])').waitFor();
+    assert.equal(
+      await page.evaluate(() => document.activeElement?.id),
+      'btn-howto',
+      'finishing How-to should return keyboard focus to its Home trigger',
+    );
   }
   await page.locator('[data-screen="home"]:not([hidden])').waitFor();
   await scan(page, 'home');
@@ -97,6 +103,12 @@ try {
   await page.locator('#btn-settings').click();
   await scan(page, 'settings');
   await page.locator('#btn-settings-back').click();
+  await page.locator('[data-screen="home"]:not([hidden])').waitFor();
+  assert.equal(
+    await page.evaluate(() => document.activeElement?.id),
+    'btn-settings',
+    'Settings Back should return keyboard focus to its Home trigger',
+  );
 
   await page.locator('#btn-play').click();
   await page.locator('#board-access [role="gridcell"]').first().waitFor();

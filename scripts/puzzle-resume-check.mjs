@@ -47,6 +47,15 @@ async function readSnapshot(page) {
   }, ACTIVE_KEY);
 }
 
+async function readAllStorage(page) {
+  return page.evaluate(() => Object.fromEntries(
+    Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index))
+      .filter((key) => key !== null)
+      .sort()
+      .map((key) => [key, localStorage.getItem(key)]),
+  ));
+}
+
 async function waitForState(page, { levelId, arrowsRemaining, status = 'playing' }) {
   await page.waitForFunction(
     ({ key, levelId: wantedLevel, arrowsRemaining: wantedArrows, status: wantedStatus }) => {
@@ -151,6 +160,30 @@ try {
   await page.locator('[data-screen="home"]:not([hidden])').waitFor();
   assert.equal(await page.locator('#btn-play').textContent(), 'Resume');
   assert.deepEqual(await readSnapshot(page), levelTwoAfterMove);
+  const storageBeforeHomeScreenReturns = await readAllStorage(page);
+  await page.locator('#btn-settings').click();
+  await page.locator('[data-screen="settings"]:not([hidden])').waitFor();
+  await page.locator('#btn-settings-back').click();
+  await page.locator('[data-screen="home"]:not([hidden])').waitFor();
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'btn-settings');
+  assert.deepEqual(
+    await readAllStorage(page),
+    storageBeforeHomeScreenReturns,
+    'Settings Back must preserve the active puzzle, undo history, unlocks, settings, and daily records',
+  );
+  assert.deepEqual(await readSnapshot(page), levelTwoAfterMove);
+  await page.locator('#btn-howto').click();
+  await page.locator('[data-screen="howto"]:not([hidden])').waitFor();
+  await page.locator('#btn-howto-ok').click();
+  await page.locator('[data-screen="home"]:not([hidden])').waitFor();
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'btn-howto');
+  assert.deepEqual(
+    await readAllStorage(page),
+    storageBeforeHomeScreenReturns,
+    'How-to completion must preserve the active puzzle, undo history, unlocks, settings, and daily records',
+  );
+  assert.deepEqual(await readSnapshot(page), levelTwoAfterMove);
+  console.log('PASS Settings and How-to return focus without changing any saved game state');
   await page.locator('#btn-play').click();
   await page.locator('[data-screen="play"]:not([hidden])').waitFor();
   assert.deepEqual(await readSnapshot(page), levelTwoAfterMove);
