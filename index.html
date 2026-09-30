@@ -41,6 +41,7 @@
             <li><strong>Fail</strong> — hitting another arrow or a wall ends the try. Retry or Undo.</li>
             <li><strong>Order matters</strong> — clear blocking arrows first.</li>
             <li><strong>Hint</strong> — highlights a safe next arrow (rewarded stub).</li>
+            <li><strong>Keyboard and screen readers</strong> — use the arrow keys to move through the board; press Enter or Space to fire an arrow. Each cell announces its row, column, direction, and path blocker (if any).</li>
           </ul>
           <button type="button" class="btn primary" id="btn-howto-ok">Got it</button>
         </div>
@@ -81,8 +82,11 @@
           <button type="button" class="icon-btn" id="btn-hint" aria-label="Hint" title="Hint">💡</button>
         </header>
         <div class="board-wrap">
-          <canvas id="board" width="360" height="360" aria-label="Arrow grid"></canvas>
+          <canvas id="board" width="360" height="360" aria-hidden="true"></canvas>
+          <div id="board-access" class="board-access" role="grid" aria-label="Puzzle board" aria-describedby="board-help"></div>
         </div>
+        <p id="board-help" class="sr-only">Use the arrow keys to move one cell at a time. Home and End move to the first and last cell in a row. Enter or Space fires an arrow; empty cells and walls cannot be fired. Tab moves to the game controls.</p>
+        <p id="board-announcement" class="sr-only" aria-live="polite" aria-atomic="true"></p>
         <div class="play-bar">
           <button type="button" class="btn secondary" id="btn-undo">Undo</button>
           <button type="button" class="btn secondary" id="btn-retry">Retry</button>

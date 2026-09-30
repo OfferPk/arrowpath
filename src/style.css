@@ -163,16 +163,65 @@ html, body {
 
 .board-wrap {
   width: 100%;
+  position: relative;
   display: flex;
   justify-content: center;
   touch-action: manipulation;
 }
 #board {
+  display: block;
   border-radius: 12px;
   border: 1px solid rgba(45, 226, 230, 0.25);
   box-shadow: 0 0 28px rgba(45, 226, 230, 0.12);
   max-width: 100%;
   background: #070b16;
+}
+.board-access {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  pointer-events: none;
+  z-index: 1;
+}
+.board-row {
+  display: grid;
+  grid-template-columns: repeat(var(--board-cols), minmax(0, 1fr));
+  flex: 1;
+  min-height: 0;
+}
+.board-cell {
+  appearance: none;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: transparent;
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+.board-cell[aria-disabled="true"] { cursor: default; }
+.board-cell:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: -4px;
+  box-shadow: inset 0 0 0 2px #070b16;
+  background: rgba(255, 255, 255, 0.1);
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .play-bar {

@@ -19,8 +19,9 @@ import {
   purchaseRemoveAds,
 } from './ads/stubs';
 import { completeLevelWithoutWaitingForAd } from './game/completion';
-import { drawBoard, hitCell, resizeCanvas } from './ui/canvas';
-import type { LevelDef } from './game/types';
+import { drawBoard, resizeCanvas } from './ui/canvas';
+import { describeBoard, describeBoardCell } from './ui/accessibility';
+import type { GameState, LevelDef } from './game/types';
 
 type PlayMode = 'campaign' | 'daily';
 
@@ -32,11 +33,14 @@ let dailyKey: string | null = null;
 let cellSize = 40;
 let hintCell: { x: number; y: number } | null = null;
 let flashPath: { x: number; y: number }[] | null = null;
+let activeCellIndex = 0;
 let muted = getSettings().muted;
 let rewardAction: 'hint' | 'undo' | null = null;
 let toastTimer = 0;
 
 const board = document.getElementById('board') as HTMLCanvasElement;
+const boardAccess = document.getElementById('board-access') as HTMLDivElement;
+const boardAnnouncement = document.getElementById('board-announcement') as HTMLParagraphElement;
 const failEl = document.getElementById('overlay-fail')!;
 const winEl = document.getElementById('overlay-win')!;
 const rewardEl = document.getElementById('overlay-reward')!;
@@ -120,7 +124,67 @@ function layout(): void {
   );
   const { cell } = resizeCanvas(board, css || 320, s.w, s.h);
   cellSize = cell;
+  boardAccess.style.width = board.style.width;
+  boardAccess.style.height = board.style.height;
   render();
+}
+
+function setActiveCell(index: number, focus = true): void {
+  activeCellIndex = index;
+  boardAccess.querySelectorAll<HTMLButtonElement>('.board-cell').forEach((button, i) => {
+    const active = i === index;
+    button.tabIndex = active ? 0 : -1;
+    button.setAttribute('aria-selected', String(active));
+  });
+  if (focus) {
+    boardAccess.querySelector<HTMLButtonElement>(`[data-cell-index="${index}"]`)
+      ?.focus({ preventScroll: true });
+  }
+}
+
+function renderAccessibleBoard(s: GameState): void {
+  const restoreFocus = boardAccess.contains(document.activeElement);
+  activeCellIndex = Math.max(0, Math.min(activeCellIndex, s.cells.length - 1));
+  boardAccess.setAttribute('aria-label', describeBoard(s));
+  boardAccess.style.setProperty('--board-cols', String(s.w));
+
+  const fragment = document.createDocumentFragment();
+  for (let y = 0; y < s.h; y++) {
+    const row = document.createElement('div');
+    row.className = 'board-row';
+    row.setAttribute('role', 'row');
+    for (let x = 0; x < s.w; x++) {
+      const index = y * s.w + x;
+      const cell = s.cells[index]!;
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'board-cell';
+      button.setAttribute('role', 'gridcell');
+      button.setAttribute('aria-label', describeBoardCell(s, x, y));
+      button.setAttribute('aria-rowindex', String(y + 1));
+      button.setAttribute('aria-colindex', String(x + 1));
+      button.setAttribute('aria-selected', String(index === activeCellIndex));
+      button.setAttribute(
+        'aria-disabled',
+        String(cell.kind !== 'arrow' || s.status !== 'playing'),
+      );
+      button.dataset.cellIndex = String(index);
+      button.dataset.x = String(x);
+      button.dataset.y = String(y);
+      button.tabIndex = index === activeCellIndex ? 0 : -1;
+      row.appendChild(button);
+    }
+    fragment.appendChild(row);
+  }
+  boardAccess.replaceChildren(fragment);
+  if (restoreFocus) {
+    boardAccess.querySelector<HTMLButtonElement>(`[data-cell-index="${activeCellIndex}"]`)
+      ?.focus({ preventScroll: true });
+  }
+}
+
+function announceBoard(message: string): void {
+  boardAnnouncement.textContent = message;
 }
 
 function render(): void {
@@ -132,6 +196,7 @@ function render(): void {
     flashPath,
     failFlash: s.status === 'failed',
   });
+  renderAccessibleBoard(s);
   updateHud();
 }
 
@@ -171,12 +236,19 @@ async function startLevel(
   dailyKey = mode === 'daily' ? key : null;
   currentId = id;
   engine = new Engine(level);
+  activeCellIndex = Math.max(
+    0,
+    engine.getState().cells.findIndex((cell) => cell.kind === 'arrow'),
+  );
   hintCell = null;
   flashPath = null;
   hideOverlays();
   showScreen('play');
   layout();
   render();
+  announceBoard('');
+  boardAccess.querySelector<HTMLButtonElement>(`[data-cell-index="${activeCellIndex}"]`)
+    ?.focus({ preventScroll: true });
 }
 
 function startDaily(): void {
@@ -200,6 +272,7 @@ function onFail(reason: string): void {
   const el = document.getElementById('fail-reason')!;
   el.textContent = reason === 'wall' ? 'Hit a wall.' : 'Hit another arrow.';
   failEl.hidden = false;
+  document.getElementById('btn-fail-retry')?.focus({ preventScroll: true });
   void showInterstitial('fail');
 }
 
@@ -220,6 +293,7 @@ function onWin(): void {
   completeLevelWithoutWaitingForAd(
     () => {
       winEl.hidden = false;
+      document.getElementById('btn-next')?.focus({ preventScroll: true });
     },
     showInterstitial,
     playMode === 'daily' ? 'daily-complete' : 'level-complete',
@@ -285,13 +359,20 @@ function tryFire(x: number, y: number): void {
     render();
     if (!result.ok) {
       if (result.reason === 'collision' || result.reason === 'wall') {
+        const blocker = result.reason === 'wall' ? 'a wall' : 'another arrow';
+        announceBoard(`Arrow at row ${y + 1}, column ${x + 1} failed: its path hit ${blocker}.`);
         onFail(result.reason);
       }
       return;
     }
     if (result.won) {
+      announceBoard('Board cleared. All arrows have left the board.');
       void onWin();
     } else {
+      const remaining = result.state.arrowsRemaining;
+      const arrowWord = remaining === 1 ? 'arrow' : 'arrows';
+      const remainVerb = remaining === 1 ? 'remains' : 'remain';
+      announceBoard(`Arrow at row ${y + 1}, column ${x + 1} cleared. ${remaining} ${arrowWord} ${remainVerb}.`);
       vibrate(12);
     }
   }, 90);
@@ -304,6 +385,9 @@ function doRetry(): void {
   hintCell = null;
   flashPath = null;
   render();
+  boardAccess.querySelector<HTMLButtonElement>(`[data-cell-index="${activeCellIndex}"]`)
+    ?.focus({ preventScroll: true });
+  announceBoard(describeBoard(state()));
   void showInterstitial('retry');
 }
 
@@ -316,6 +400,9 @@ function tryUndo(fromFail = false): void {
     hideOverlays();
     hintCell = null;
     render();
+    boardAccess.querySelector<HTMLButtonElement>(`[data-cell-index="${activeCellIndex}"]`)
+      ?.focus({ preventScroll: true });
+    announceBoard(describeBoard(state()));
     return;
   }
   rewardAction = 'undo';
@@ -346,11 +433,17 @@ async function confirmReward(): Promise<void> {
   if (action === 'hint') {
     hintCell = engine.hint();
     render();
+    announceBoard(
+      hintCell
+        ? `Hint: ${describeBoardCell(state(), hintCell.x, hintCell.y)}`
+        : 'No safe arrow is available for a hint.',
+    );
   } else if (action === 'undo') {
     engine.undo(true);
     hideOverlays();
     hintCell = null;
     render();
+    announceBoard(describeBoard(state()));
   }
 }
 
@@ -483,10 +576,46 @@ function wire(): void {
     rewardAction = null;
   });
 
-  board.addEventListener('pointerdown', (ev) => {
-    if (!engine || state().status !== 'playing') return;
-    const cell = hitCell(board, ev.clientX, ev.clientY, state());
-    if (cell) tryFire(cell.x, cell.y);
+  boardAccess.addEventListener('click', (ev) => {
+    const button = (ev.target as HTMLElement).closest<HTMLButtonElement>('.board-cell');
+    if (!button || button.getAttribute('aria-disabled') === 'true') return;
+    tryFire(Number(button.dataset.x), Number(button.dataset.y));
+  });
+  boardAccess.addEventListener('focusin', (ev) => {
+    const button = (ev.target as HTMLElement).closest<HTMLButtonElement>('.board-cell');
+    if (button) setActiveCell(Number(button.dataset.cellIndex), false);
+  });
+  boardAccess.addEventListener('keydown', (ev) => {
+    const button = (ev.target as HTMLElement).closest<HTMLButtonElement>('.board-cell');
+    if (!button || !engine) return;
+    const s = state();
+    const x = Number(button.dataset.x);
+    const y = Number(button.dataset.y);
+    let nextX = x;
+    let nextY = y;
+    if ((ev.ctrlKey || ev.metaKey) && ev.key === 'Home') {
+      nextX = 0;
+      nextY = 0;
+    } else if ((ev.ctrlKey || ev.metaKey) && ev.key === 'End') {
+      nextX = s.w - 1;
+      nextY = s.h - 1;
+    } else if (ev.key === 'ArrowLeft') {
+      nextX = Math.max(0, x - 1);
+    } else if (ev.key === 'ArrowRight') {
+      nextX = Math.min(s.w - 1, x + 1);
+    } else if (ev.key === 'ArrowUp') {
+      nextY = Math.max(0, y - 1);
+    } else if (ev.key === 'ArrowDown') {
+      nextY = Math.min(s.h - 1, y + 1);
+    } else if (ev.key === 'Home') {
+      nextX = 0;
+    } else if (ev.key === 'End') {
+      nextX = s.w - 1;
+    } else {
+      return;
+    }
+    ev.preventDefault();
+    setActiveCell(nextY * s.w + nextX);
   });
 
   window.addEventListener('resize', () => layout());

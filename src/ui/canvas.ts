@@ -114,12 +114,22 @@ function drawWall(
   ctx.strokeStyle = COLORS.wallGlow;
   ctx.lineWidth = 2;
   ctx.stroke();
-  // metro hatch
-  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  // Cross-hatching marks walls with a shape pattern, not only a different color.
+  ctx.save();
   ctx.beginPath();
-  ctx.moveTo(px + pad + 4, py + cell - pad - 4);
-  ctx.lineTo(px + cell - pad - 4, py + pad + 4);
-  ctx.stroke();
+  ctx.rect(px + pad, py + pad, cell - pad * 2, cell - pad * 2);
+  ctx.clip();
+  ctx.strokeStyle = 'rgba(255,255,255,0.42)';
+  ctx.lineWidth = Math.max(1, cell * 0.035);
+  for (let offset = -cell; offset <= cell * 2; offset += Math.max(7, cell * 0.28)) {
+    ctx.beginPath();
+    ctx.moveTo(px + offset, py + cell - pad);
+    ctx.lineTo(px + offset + cell, py + pad);
+    ctx.moveTo(px + offset, py + pad);
+    ctx.lineTo(px + offset + cell, py + cell - pad);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 function drawArrow(
@@ -154,10 +164,23 @@ function drawArrow(
   ctx.lineTo(baseX - bx * size * 0.55, baseY - by * size * 0.55);
   ctx.closePath();
   ctx.fill();
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = Math.max(1.5, cell * 0.045);
+  ctx.stroke();
   ctx.shadowBlur = 0;
 
+  if (glow) {
+    ctx.setLineDash([Math.max(2, cell * 0.07), Math.max(2, cell * 0.045)]);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = Math.max(1.5, cell * 0.05);
+    ctx.beginPath();
+    ctx.arc(cx, cy, size * 1.35, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
   // subtle glyph for a11y
-  ctx.fillStyle = 'rgba(7,11,22,0.55)';
+  ctx.fillStyle = '#070b16';
   ctx.font = `bold ${Math.floor(cell * 0.22)}px system-ui,sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
