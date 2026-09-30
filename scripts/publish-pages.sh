@@ -193,10 +193,15 @@ for entry in source.iterdir():
 # Unknown root-level files are preserved by refusing to delete them. Known
 # generated root entries are replaced from dist; .nojekyll, CNAME, .git, and
 # other hidden Pages-owned files are left untouched.
+# The previous autoUpdate build generated a root registerSW.js; prompt mode
+# bundles registration into the app, so only that regular legacy file is retired.
 for entry in destination.iterdir():
     if entry.name in {".git", ".nojekyll", "CNAME"} or entry.name.startswith("."):
         continue
     if entry.name not in source_names:
+        if entry.name == "registerSW.js" and entry.is_file() and not entry.is_symlink():
+            entry.unlink()
+            continue
         raise SystemExit(
             "publish:pages: ERROR: refusing to delete unexpected gh-pages root entry "
             f"{entry.name!r}; preserve or review it before publishing"
