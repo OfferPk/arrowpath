@@ -143,12 +143,16 @@ import sys
 from pathlib import Path
 
 root = Path(sys.argv[1])
-required = ("index.html", "levels.json", "manifest.webmanifest", "registerSW.js", "sw.js")
+# Prompt-mode virtual:pwa-register is bundled in the hashed app JavaScript; it
+# no longer emits a standalone registerSW.js file.
+required = ("index.html", "levels.json", "manifest.webmanifest", "sw.js")
 missing = [name for name in required if not (root / name).is_file()]
 if missing:
     raise SystemExit("publish:pages: ERROR: build output is missing: " + ", ".join(missing))
 if not (root / "assets").is_dir():
     raise SystemExit("publish:pages: ERROR: build output has no assets directory")
+if not any((root / "assets").glob("index-*.js")):
+    raise SystemExit("publish:pages: ERROR: build output has no compiled app/update registration bundle")
 if (root / ".nojekyll").exists() or (root / "CNAME").exists():
     raise SystemExit("publish:pages: ERROR: dist must not replace Pages-owned .nojekyll or CNAME")
 for entry in root.rglob("*"):
