@@ -164,6 +164,89 @@ try {
   await page.locator('#overlay-win:not([hidden])').waitFor({ timeout: 3000 });
   assert.equal(await page.evaluate(() => document.activeElement?.id), 'btn-next', 'Enter should activate the remaining arrow and show completion');
 
+  const touchContext = await browser.newContext({
+    viewport: { width: 568, height: 320 },
+    isMobile: true,
+    hasTouch: true,
+    colorScheme: 'dark',
+  });
+  const touchPage = await touchContext.newPage();
+  await touchPage.addInitScript(() => {
+    localStorage.setItem('arrowpath:v1:progress', JSON.stringify({ unlocked: 50, cleared: [] }));
+    localStorage.setItem('arrowpath:v1:onboarded', JSON.stringify({ ok: true }));
+  });
+  await touchPage.goto(baseUrl, { waitUntil: 'networkidle' });
+  await touchPage.locator('#btn-levels').tap();
+  await touchPage.locator('#level-grid button').filter({ hasText: /^50$/ }).tap();
+  await touchPage.locator('#board-access [role="gridcell"]').first().waitFor();
+  await scan(touchPage, 'compact landscape (Level 50 touch board)');
+
+  const mobileLayout = await touchPage.evaluate(() => {
+    const rect = (element) => {
+      const bounds = element.getBoundingClientRect();
+      return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, bottom: bounds.bottom };
+    };
+    const cells = Array.from(document.querySelectorAll('#board-access [role="gridcell"]'), rect);
+    const controls = ['#btn-undo', '#btn-retry', '#btn-play-levels'].map((id) =>
+      rect(document.querySelector(id)),
+    );
+    return {
+      width: innerWidth,
+      height: innerHeight,
+      scrollWidth: document.documentElement.scrollWidth,
+      scrollHeight: document.documentElement.scrollHeight,
+      cellWidth: Math.min(...cells.map((cell) => cell.width)),
+      cellHeight: Math.min(...cells.map((cell) => cell.height)),
+      board: rect(document.querySelector('#board')),
+      hud: rect(document.querySelector('.hud')),
+      controls,
+    };
+  });
+  assert.ok(mobileLayout.cellWidth >= 32 && mobileLayout.cellHeight >= 32, '7×7 landscape tap targets should be at least 32px square');
+  assert.ok(mobileLayout.scrollWidth <= mobileLayout.width, 'compact landscape layout should not scroll horizontally');
+  assert.ok(mobileLayout.scrollHeight <= mobileLayout.height, 'board and controls should fit without vertical scrolling');
+  assert.ok(mobileLayout.board.bottom <= mobileLayout.height, 'board should remain inside the viewport');
+  assert.ok(mobileLayout.hud.bottom <= mobileLayout.height, 'HUD should remain inside the viewport');
+  assert.ok(
+    mobileLayout.board.y >= mobileLayout.hud.bottom || mobileLayout.board.bottom <= mobileLayout.hud.y,
+    'board should not overlap the HUD',
+  );
+  assert.ok(mobileLayout.controls.every((control) => control.bottom <= mobileLayout.height), 'all game controls should remain visible');
+  assert.ok(
+    mobileLayout.controls.every((control) =>
+      control.x >= mobileLayout.board.x + mobileLayout.board.width ||
+      control.x + control.width <= mobileLayout.board.x ||
+      control.y >= mobileLayout.board.bottom ||
+      control.bottom <= mobileLayout.board.y,
+    ),
+    'game controls should not overlap the board',
+  );
+
+  const beforeKeyboard = await touchPage.evaluate(() => {
+    const active = document.activeElement;
+    return { x: Number(active.dataset.x), y: Number(active.dataset.y) };
+  });
+  await touchPage.keyboard.press('ArrowRight');
+  const afterKeyboard = await touchPage.evaluate(() => {
+    const active = document.activeElement;
+    return { x: Number(active.dataset.x), y: Number(active.dataset.y) };
+  });
+  assert.deepEqual(
+    afterKeyboard,
+    { x: Math.min(beforeKeyboard.x + 1, 6), y: beforeKeyboard.y },
+    'compact-landscape keyboard navigation should remain unchanged',
+  );
+
+  const safeTouch = touchPage.locator('#board-access [role="gridcell"][aria-disabled="false"][aria-label*="Path is clear to the board edge"]').first();
+  assert.ok(await safeTouch.count(), 'Level 50 should expose a safe arrow for touch');
+  const arrowsBeforeTouch = Number(await touchPage.locator('#hud-left').textContent());
+  await safeTouch.tap();
+  await touchPage.waitForTimeout(120);
+  const arrowsAfterTouch = Number(await touchPage.locator('#hud-left').textContent());
+  assert.ok(arrowsAfterTouch < arrowsBeforeTouch, 'tapping a safe arrow should still fire it');
+  console.log(`PASS compact landscape touch flow: ${mobileLayout.cellWidth.toFixed(1)}px cells; board, HUD, controls, touch, and keyboard fit`);
+  await touchContext.close();
+
   if (failures.length) {
     console.error(`\n${failures.length} axe violation(s) across the scanned views.`);
     process.exitCode = 1;

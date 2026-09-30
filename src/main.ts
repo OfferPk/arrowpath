@@ -246,9 +246,13 @@ function layout(): void {
   if (!engine) return;
   const s = state();
   const wrap = board.parentElement!;
+  const compactLandscape = window.matchMedia(
+    '(orientation: landscape) and (max-height: 360px)',
+  ).matches;
+  const heightLimit = window.innerHeight * (compactLandscape ? 0.7 : 0.55);
   const css = Math.max(
     0,
-    Math.floor(Math.min(wrap.clientWidth, window.innerHeight * 0.55)),
+    Math.floor(Math.min(wrap.clientWidth, heightLimit)),
   );
   const { cell } = resizeCanvas(board, css || 320, s.w, s.h);
   cellSize = cell;

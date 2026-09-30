@@ -299,3 +299,33 @@ html, body {
   pointer-events: none;
 }
 .toast[hidden] { display: none !important; }
+
+@media (orientation: landscape) and (max-height: 360px) {
+  .screen[data-screen="play"] {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 132px;
+    grid-template-rows: auto minmax(0, 1fr);
+    column-gap: 12px;
+    row-gap: 10px;
+  }
+  .screen[data-screen="play"] .hud {
+    grid-column: 1 / -1;
+    margin-bottom: 0;
+  }
+  .screen[data-screen="play"] .board-wrap {
+    grid-column: 1;
+    grid-row: 2;
+    align-self: center;
+  }
+  .screen[data-screen="play"] .play-bar {
+    grid-column: 2;
+    grid-row: 2;
+    grid-template-columns: 1fr;
+    align-self: center;
+    gap: 8px;
+    margin-top: 0;
+  }
+  .screen[data-screen="play"] .play-bar .btn {
+    min-height: 44px;
+  }
+}
