@@ -21,9 +21,14 @@ export function describeBoardCell(state: GameState, x: number, y: number): strin
     return `${position}: arrow pointing ${DIRECTION_NAMES[cell.dir]}. Path is clear to the board edge.`;
   }
   if (path.result === 'collision' || path.result === 'wall') {
-    const blocker = path.path[path.path.length - 1];
+    const blocker = path.blocker;
     const blockerName = path.result === 'wall' ? 'wall' : 'another arrow';
-    return `${position}: arrow pointing ${DIRECTION_NAMES[cell.dir]}. Path is blocked by ${blockerName} at row ${blocker!.y + 1}, column ${blocker!.x + 1}.`;
+    const stopped = path.path[path.path.length - 1];
+    const blockerPosition = `row ${blocker!.y + 1}, column ${blocker!.x + 1}`;
+    if (stopped!.x === x && stopped!.y === y) {
+      return `${position}: arrow pointing ${DIRECTION_NAMES[cell.dir]}. Cannot move; ${blockerName} is immediately ahead at ${blockerPosition}.`;
+    }
+    return `${position}: arrow pointing ${DIRECTION_NAMES[cell.dir]}. Path is blocked by ${blockerName} at ${blockerPosition}; the arrow can slide to row ${stopped!.y + 1}, column ${stopped!.x + 1}.`;
   }
   return `${position}: arrow pointing ${DIRECTION_NAMES[cell.dir]}.`;
 }

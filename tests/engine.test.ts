@@ -44,7 +44,7 @@ function shortestSolutionDepth(level: LevelDef): number | null {
   return null;
 }
 
-/** Tiny hand fixture: two arrows; east must clear first. */
+/** Two east-facing arrows: the left one can slide up to the other. */
 const FIXTURE: LevelDef = {
   id: 9001,
   w: 3,
@@ -55,52 +55,34 @@ const FIXTURE: LevelDef = {
   ],
 };
 
-describe('traceFire / move rules', () => {
-  it('clears when path exits board through empty cells', () => {
+function cellIndex(state: GameState, x: number, y: number): number {
+  return y * state.w + x;
+}
+
+describe('traceFire / fixed-direction slide rules', () => {
+  it('traces a clear ray through empty cells and identifies the off-board exit', () => {
     const level: LevelDef = {
       id: 1,
-      w: 3,
-      h: 3,
-      cells: [{ x: 1, y: 1, t: 'arrow', d: 'E' }],
+      w: 4,
+      h: 1,
+      cells: [{ x: 1, y: 0, t: 'arrow', d: 'E' }],
     };
-    const state = createState(level);
-    const t = traceFire(state, 1, 1);
-    expect(t.result).toBe('clear');
-    const r = fireArrow(state, 1, 1);
-    expect(r.ok).toBe(true);
-    if (r.ok) {
-      expect(r.won).toBe(true);
-      expect(r.state.arrowsRemaining).toBe(0);
-      expect(r.state.status).toBe('won');
-    }
+    const trace = traceFire(createState(level), 1, 0);
+    expect(trace.result).toBe('clear');
+    expect(trace.path).toEqual([{ x: 1, y: 0 }, { x: 2, y: 0 }, { x: 3, y: 0 }]);
+    expect(trace.exitCell).toEqual({ x: 4, y: 0 });
+    expect(trace.blocker).toBeNull();
   });
 
-  it('collision when next cell has another arrow', () => {
-    const state = createState(FIXTURE);
-    // left arrow faces E — next empty then hits right arrow? path: (0,0)->(1,0) empty ->(2,0) arrow
-    const t = traceFire(state, 0, 0);
-    expect(t.result).toBe('collision');
-    const r = fireArrow(state, 0, 0);
-    expect(r.ok).toBe(false);
-    if (!r.ok) {
-      expect(r.reason).toBe('collision');
-      expect(r.state.status).toBe('failed');
-    }
+  it('stops the traced path immediately before another arrow', () => {
+    const trace = traceFire(createState(FIXTURE), 0, 0);
+    expect(trace.result).toBe('collision');
+    expect(trace.path).toEqual([{ x: 0, y: 0 }, { x: 1, y: 0 }]);
+    expect(trace.blocker).toEqual({ x: 2, y: 0 });
+    expect(trace.exitCell).toBeNull();
   });
 
-  it('right arrow in fixture clears off-board', () => {
-    const state = createState(FIXTURE);
-    const t = traceFire(state, 2, 0);
-    expect(t.result).toBe('clear');
-    const r = fireArrow(state, 2, 0);
-    expect(r.ok).toBe(true);
-    if (r.ok) {
-      expect(r.won).toBe(false);
-      expect(r.state.arrowsRemaining).toBe(1);
-    }
-  });
-
-  it('wall blocks path → fail', () => {
+  it('stops before a permanent wall and never includes the wall in its path', () => {
     const level: LevelDef = {
       id: 2,
       w: 4,
@@ -110,102 +92,197 @@ describe('traceFire / move rules', () => {
         { x: 2, y: 0, t: 'wall' },
       ],
     };
-    const state = createState(level);
-    expect(traceFire(state, 0, 0).result).toBe('wall');
-    const r = fireArrow(state, 0, 0);
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason).toBe('wall');
+    const trace = traceFire(createState(level), 0, 0);
+    expect(trace.result).toBe('wall');
+    expect(trace.path).toEqual([{ x: 0, y: 0 }, { x: 1, y: 0 }]);
+    expect(trace.blocker).toEqual({ x: 2, y: 0 });
   });
 
-  it('empty cells are passable', () => {
+  it('keeps each arrow facing the same direction and supports all four exits', () => {
     const level: LevelDef = {
       id: 3,
-      w: 5,
-      h: 1,
-      cells: [{ x: 0, y: 0, t: 'arrow', d: 'E' }],
+      w: 3,
+      h: 3,
+      cells: [
+        { x: 1, y: 0, t: 'arrow', d: 'N' },
+        { x: 2, y: 1, t: 'arrow', d: 'E' },
+        { x: 1, y: 2, t: 'arrow', d: 'S' },
+        { x: 0, y: 1, t: 'arrow', d: 'W' },
+      ],
     };
-    expect(traceFire(createState(level), 0, 0).result).toBe('clear');
+    let state = createState(level);
+    for (const point of [{ x: 1, y: 0 }, { x: 2, y: 1 }, { x: 1, y: 2 }, { x: 0, y: 1 }]) {
+      const result = fireArrow(state, point.x, point.y);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.exited).toBe(true);
+      expect(result.state.movesMade).toBe(state.movesMade + 1);
+      expect(result.state.arrowsRemaining).toBe(state.arrowsRemaining - 1);
+      state = result.state;
+    }
+    expect(state.status).toBe('won');
+    expect(state.arrowsRemaining).toBe(0);
+    expect(state.movesMade).toBe(4);
   });
 
-  it('invalid tap on empty cell', () => {
-    const state = createState(FIXTURE);
-    const r = fireArrow(state, 1, 0);
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason).toBe('invalid');
+  it('rejects a tap on an empty cell', () => {
+    const result = fireArrow(createState(FIXTURE), 1, 0);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('invalid');
+  });
+});
+
+describe('blocked movement', () => {
+  it('slides to the last free cell before another arrow and retains the arrow direction', () => {
+    const result = fireArrow(createState(FIXTURE), 0, 0);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.exited).toBe(false);
+    expect(result.blockedBy).toBe('collision');
+    expect(result.state.status).toBe('playing');
+    expect(result.state.arrowsRemaining).toBe(2);
+    expect(result.state.movesMade).toBe(1);
+    expect(result.state.cells[cellIndex(result.state, 0, 0)]).toEqual({ kind: 'empty' });
+    expect(result.state.cells[cellIndex(result.state, 1, 0)]).toEqual({ kind: 'arrow', dir: 'E' });
+    expect(result.state.cells[cellIndex(result.state, 2, 0)]).toEqual({ kind: 'arrow', dir: 'E' });
+  });
+
+  it('does not count or save history when a blocker is immediately adjacent', () => {
+    const level: LevelDef = {
+      id: 4,
+      w: 2,
+      h: 1,
+      cells: [
+        { x: 0, y: 0, t: 'arrow', d: 'E' },
+        { x: 1, y: 0, t: 'arrow', d: 'E' },
+      ],
+    };
+    const engine = new Engine(level);
+    const before = engine.getState();
+    const result = engine.fire(0, 0);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('collision');
+    expect(engine.getState()).toEqual(before);
+    expect(engine.getState().movesMade).toBe(0);
+    expect(engine.canUndo()).toBe(false);
+  });
+
+  it('slides up to a wall without entering it or failing the level', () => {
+    const level: LevelDef = {
+      id: 5,
+      w: 4,
+      h: 1,
+      cells: [
+        { x: 0, y: 0, t: 'arrow', d: 'E' },
+        { x: 2, y: 0, t: 'wall' },
+      ],
+    };
+    const result = fireArrow(createState(level), 0, 0);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.status).toBe('playing');
+    expect(result.state.movesMade).toBe(1);
+    expect(result.state.cells[cellIndex(result.state, 1, 0)]).toEqual({ kind: 'arrow', dir: 'E' });
+    expect(result.state.cells[cellIndex(result.state, 2, 0)]).toEqual({ kind: 'wall' });
+  });
+
+  it('can slide again after the arrow that blocked it leaves', () => {
+    const engine = new Engine(FIXTURE);
+    engine.fire(0, 0);
+    expect(engine.getState().cells[cellIndex(engine.getState(), 1, 0)]).toEqual({ kind: 'arrow', dir: 'E' });
+    engine.fire(2, 0);
+    const result = engine.fire(1, 0);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.exited).toBe(true);
+      expect(result.state.status).toBe('won');
+      expect(result.state.movesMade).toBe(3);
+    }
   });
 });
 
 describe('solved fixture', () => {
-  it('solves FIXTURE by firing right then left', () => {
+  it('solves FIXTURE by exiting the right arrow then the left arrow', () => {
     let state = createState(FIXTURE);
-    const a = fireArrow(state, 2, 0);
-    expect(a.ok).toBe(true);
-    if (!a.ok) return;
-    state = a.state;
-    const b = fireArrow(state, 0, 0);
-    expect(b.ok).toBe(true);
-    if (b.ok) {
-      expect(b.won).toBe(true);
-      expect(b.state.status).toBe('won');
+    const first = fireArrow(state, 2, 0);
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    state = first.state;
+    const second = fireArrow(state, 0, 0);
+    expect(second.ok).toBe(true);
+    if (second.ok) {
+      expect(second.won).toBe(true);
+      expect(second.state.status).toBe('won');
     }
   });
 
   it('solver finds a solution for FIXTURE', () => {
-    const sol = solve(createState(FIXTURE));
-    expect(sol).not.toBeNull();
-    expect(sol!.length).toBe(2);
-    let s = createState(FIXTURE);
-    for (const step of sol!) {
-      const r = fireArrow(s, step.x, step.y);
-      expect(r.ok).toBe(true);
-      if (!r.ok) return;
-      s = r.state;
+    const solution = solve(createState(FIXTURE));
+    expect(solution).not.toBeNull();
+    expect(solution!.length).toBe(2);
+    let state = createState(FIXTURE);
+    for (const step of solution!) {
+      const result = fireArrow(state, step.x, step.y);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      state = result.state;
     }
-    expect(s.status).toBe('won');
+    expect(state.status).toBe('won');
   });
 });
 
-describe('undo', () => {
-  it('restores previous board and consumes free undo', () => {
-    const eng = new Engine(FIXTURE);
-    expect(eng.getState().undosLeft).toBe(FREE_UNDOS);
-    eng.fire(2, 0);
-    expect(eng.getState().arrowsRemaining).toBe(1);
-    expect(eng.canUndo()).toBe(true);
-    const ok = eng.undo(false);
-    expect(ok).toBe(true);
-    expect(eng.getState().arrowsRemaining).toBe(2);
-    expect(eng.getState().status).toBe('playing');
-    expect(eng.getState().undosLeft).toBe(FREE_UNDOS - 1);
+describe('undo and retry state', () => {
+  it('undo restores the exact position, remaining count, move count, and consumes one undo', () => {
+    const engine = new Engine(FIXTURE);
+    expect(engine.getState().undosLeft).toBe(FREE_UNDOS);
+    engine.fire(0, 0);
+    expect(engine.getState().movesMade).toBe(1);
+    expect(engine.getState().arrowsRemaining).toBe(2);
+    expect(engine.getState().cells[cellIndex(engine.getState(), 1, 0)]).toEqual({ kind: 'arrow', dir: 'E' });
+    expect(engine.canUndo()).toBe(true);
+    expect(engine.undo(false)).toBe(true);
+    expect(engine.getState().arrowsRemaining).toBe(2);
+    expect(engine.getState().movesMade).toBe(0);
+    expect(engine.getState().status).toBe('playing');
+    expect(engine.getState().cells[cellIndex(engine.getState(), 0, 0)]).toEqual({ kind: 'arrow', dir: 'E' });
+    expect(engine.getState().undosLeft).toBe(FREE_UNDOS - 1);
   });
 
-  it('blocks undo when free undos exhausted unless forceExtra', () => {
-    const eng = new Engine(FIXTURE);
-    eng.fire(2, 0);
-    // burn undos artificially
+  it('supports multiple undos and blocks extra undo unless forceExtra is granted', () => {
+    const engine = new Engine(FIXTURE);
+    engine.fire(0, 0);
+    engine.fire(2, 0);
     for (let i = 0; i < FREE_UNDOS; i++) {
-      expect(eng.undo(false)).toBe(true);
-      eng.fire(2, 0);
+      expect(engine.undo(false)).toBe(true);
+      engine.fire(2, 0);
     }
-    expect(eng.getState().undosLeft).toBe(0);
-    expect(eng.undo(false)).toBe(false);
-    expect(eng.undo(true)).toBe(true);
+    expect(engine.getState().undosLeft).toBe(0);
+    expect(engine.undo(false)).toBe(false);
+    expect(engine.undo(true)).toBe(true);
   });
 
-  it('undo recovers from failed collision', () => {
-    const eng = new Engine(FIXTURE);
-    eng.fire(0, 0); // collision fail
-    expect(eng.getState().status).toBe('failed');
-    eng.undo(false);
-    expect(eng.getState().status).toBe('playing');
-    expect(eng.getState().arrowsRemaining).toBe(2);
+  it('retry restores the exact level starting layout, counters, and obstacles', () => {
+    const level: LevelDef = {
+      id: 6,
+      w: 4,
+      h: 1,
+      cells: [
+        { x: 0, y: 0, t: 'arrow', d: 'E' },
+        { x: 2, y: 0, t: 'wall' },
+      ],
+    };
+    const engine = new Engine(level);
+    engine.fire(0, 0);
+    engine.restart();
+    expect(engine.getState()).toEqual(createState(level));
+    expect(engine.canUndo()).toBe(false);
   });
 });
 
 describe('engine snapshots', () => {
-  it('restores the exact board and undo history after a successful move', () => {
+  it('restores a partial slide and its undo history exactly', () => {
     const original = new Engine(FIXTURE);
-    original.fire(2, 0);
+    original.fire(0, 0);
     const saved = original.getSnapshot();
     const restored = Engine.fromSnapshot(FIXTURE, saved);
 
@@ -213,38 +290,49 @@ describe('engine snapshots', () => {
     expect(restored!.getState()).toEqual(original.getState());
     expect(restored!.canUndo()).toBe(true);
     expect(restored!.undo(false)).toBe(true);
+    expect(restored!.getState().cells[cellIndex(restored!.getState(), 0, 0)]).toEqual({ kind: 'arrow', dir: 'E' });
     expect(restored!.getState().arrowsRemaining).toBe(2);
+    expect(restored!.getState().movesMade).toBe(0);
     expect(restored!.getState().undosLeft).toBe(FREE_UNDOS - 1);
-    expect(original.getState().arrowsRemaining).toBe(1);
+    expect(original.getState().arrowsRemaining).toBe(2);
   });
 
-  it('restores a failed board so its failure can still be undone', () => {
+  it('accepts older version-one snapshots that predate movesMade', () => {
     const original = new Engine(FIXTURE);
     original.fire(0, 0);
-    const restored = Engine.fromSnapshot(FIXTURE, original.getSnapshot());
-
-    expect(restored?.getState().status).toBe('failed');
-    expect(restored?.getState().failReason).toBe('collision');
+    const legacy = structuredClone(original.getSnapshot()) as {
+      state: Record<string, unknown>;
+      history: Record<string, unknown>[];
+    };
+    delete legacy.state.movesMade;
+    for (const previous of legacy.history) delete previous.movesMade;
+    const restored = Engine.fromSnapshot(FIXTURE, legacy);
+    expect(restored?.getState().movesMade).toBe(1);
     expect(restored?.undo(false)).toBe(true);
-    expect(restored?.getState().status).toBe('playing');
+    expect(restored?.getState().movesMade).toBe(0);
   });
 
-  it('rejects mismatched, corrupt, solved, and impossible history snapshots', () => {
+  it('rejects mismatched, corrupt, and impossible history snapshots', () => {
     const original = new Engine(FIXTURE);
-    original.fire(2, 0);
+    original.fire(0, 0);
     const saved = original.getSnapshot();
     const corruptBoard = structuredClone(saved);
     corruptBoard.state.cells[0] = { kind: 'wall' };
     const badCounter = structuredClone(saved);
     badCounter.state.arrowsRemaining = 9;
+    const badMoves = structuredClone(saved);
+    badMoves.state.movesMade = -1;
     const impossibleHistory = structuredClone(saved);
     impossibleHistory.history[0]!.cells[0] = { kind: 'empty' };
     const solved = structuredClone(saved);
-    solved.state.status = 'won';
+    solved.state.arrowsRemaining = 0;
+    solved.state.cells[0] = { kind: 'empty' };
+    solved.state.cells[1] = { kind: 'empty' };
 
     expect(Engine.fromSnapshot({ ...FIXTURE, id: FIXTURE.id + 1 }, saved)).toBeNull();
     expect(Engine.fromSnapshot(FIXTURE, corruptBoard)).toBeNull();
     expect(Engine.fromSnapshot(FIXTURE, badCounter)).toBeNull();
+    expect(Engine.fromSnapshot(FIXTURE, badMoves)).toBeNull();
     expect(Engine.fromSnapshot(FIXTURE, impossibleHistory)).toBeNull();
     expect(Engine.fromSnapshot(FIXTURE, solved)).toBeNull();
   });
@@ -252,16 +340,15 @@ describe('engine snapshots', () => {
   it('detects a pristine state separately from a board returned by undo', () => {
     const engine = new Engine(FIXTURE);
     expect(engine.isPristine()).toBe(true);
-    engine.fire(2, 0);
+    engine.fire(0, 0);
     engine.undo(false);
     expect(engine.isPristine()).toBe(false);
   });
 });
 
 describe('hint safety', () => {
-  it('lists only arrows with clear exit', () => {
-    const state = createState(FIXTURE);
-    const hints = findSafeHints(state);
+  it('lists only arrows with a clear exit path', () => {
+    const hints = findSafeHints(createState(FIXTURE));
     expect(hints).toEqual([{ x: 2, y: 0 }]);
   });
 });
@@ -277,16 +364,16 @@ describe('level pack load', () => {
   it('first 10 levels are solvable', () => {
     const pack = loadPack();
     for (const level of pack.levels.slice(0, 10)) {
-      const sol = solve(createState(level), 32);
-      expect(sol, `level ${level.id} unsolvable`).not.toBeNull();
-      let s = createState(level);
-      for (const step of sol!) {
-        const r = fireArrow(s, step.x, step.y);
-        expect(r.ok, `level ${level.id} fire failed at ${step.x},${step.y}`).toBe(true);
-        if (!r.ok) return;
-        s = r.state;
+      const solution = solve(createState(level), 32);
+      expect(solution, `level ${level.id} unsolvable`).not.toBeNull();
+      let state = createState(level);
+      for (const step of solution!) {
+        const result = fireArrow(state, step.x, step.y);
+        expect(result.ok, `level ${level.id} move failed at ${step.x},${step.y}`).toBe(true);
+        if (!result.ok) return;
+        state = result.state;
       }
-      expect(s.status).toBe('won');
+      expect(state.status).toBe('won');
     }
   });
 
@@ -294,7 +381,7 @@ describe('level pack load', () => {
     const depths = loadPack().levels.map((level) => {
       const depth = shortestSolutionDepth(level);
       expect(depth, `level ${level.id} unsolvable`).not.toBeNull();
-      expect(depth, `level ${level.id} must clear one arrow per pour`).toBe(
+      expect(depth, `level ${level.id} must clear one arrow per move`).toBe(
         level.cells.filter((cell) => cell.t === 'arrow').length,
       );
       return depth;
@@ -303,9 +390,9 @@ describe('level pack load', () => {
   });
 
   it('levelToBoard places walls and arrows', () => {
-    const level = loadPack().levels.find((l) => l.id === 6)!;
+    const level = loadPack().levels.find((item) => item.id === 6)!;
     const board = levelToBoard(level);
-    expect(board.some((c) => c.kind === 'wall')).toBe(true);
-    expect(board.some((c) => c.kind === 'arrow')).toBe(true);
+    expect(board.some((cell) => cell.kind === 'wall')).toBe(true);
+    expect(board.some((cell) => cell.kind === 'arrow')).toBe(true);
   });
 });

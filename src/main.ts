@@ -34,7 +34,7 @@ import {
   getCampaignLevelToHighlight,
 } from './ui/level-select';
 import { getWinActionLabel } from './ui/win-action';
-import type { GameState, LevelDef } from './game/types';
+import type { Dir, GameState, LevelDef } from './game/types';
 
 type PlayMode = 'campaign' | 'daily';
 
@@ -54,7 +54,20 @@ let suspendedDialog: HTMLElement | null = null;
 let suspendedDialogFocus: HTMLElement | null = null;
 let rewardAttempt = 0;
 let toastTimer = 0;
-let pendingFireTimer = 0;
+let blockedFeedbackTimer = 0;
+let moveAnimationFrame = 0;
+let moveAnimation: {
+  x: number;
+  y: number;
+  from: { x: number; y: number };
+  to: { x: number; y: number };
+  dir: Dir;
+  trace: ReturnType<typeof traceFire>;
+  startedAt: number;
+  progress: number;
+  exiting: boolean;
+} | null = null;
+let blockedCell: { x: number; y: number } | null = null;
 let resumeNoticeVisible = false;
 let hasUnfinishedPuzzle = false;
 let pwaUpdateAvailable = false;
@@ -85,10 +98,17 @@ const updateNoticeMessage = document.getElementById('pwa-update-message')!;
 const updateNoticeButton = document.getElementById('btn-pwa-update') as HTMLButtonElement;
 
 function cancelPendingFire(): void {
-  if (!pendingFireTimer) return;
-  window.clearTimeout(pendingFireTimer);
-  pendingFireTimer = 0;
+  if (blockedFeedbackTimer) {
+    window.clearTimeout(blockedFeedbackTimer);
+    blockedFeedbackTimer = 0;
+  }
+  if (moveAnimationFrame) {
+    window.cancelAnimationFrame(moveAnimationFrame);
+    moveAnimationFrame = 0;
+  }
+  moveAnimation = null;
   flashPath = null;
+  blockedCell = null;
 }
 
 function showScreen(name: string): void {
@@ -195,7 +215,7 @@ function onUpdateActivated(): void {
 }
 
 function applyUpdate(): void {
-  if (!pwaUpdateAvailable || pwaUpdateApplying) return;
+  if (!pwaUpdateAvailable || pwaUpdateApplying || moveAnimation) return;
   const presentation = getUpdateNoticePresentation({
     available: true,
     screen: currentScreen(),
@@ -385,7 +405,7 @@ function renderAccessibleBoard(s: GameState): void {
       button.setAttribute('aria-selected', String(index === activeCellIndex));
       button.setAttribute(
         'aria-disabled',
-        String(cell.kind !== 'arrow' || s.status !== 'playing'),
+        String(cell.kind !== 'arrow' || s.status !== 'playing' || moveAnimation !== null),
       );
       button.dataset.cellIndex = String(index);
       button.dataset.x = String(x);
@@ -414,6 +434,16 @@ function render(): void {
     hint: hintCell,
     flashPath,
     failFlash: s.status === 'failed',
+    blockedCell,
+    movingArrow: moveAnimation
+      ? {
+          from: moveAnimation.from,
+          to: moveAnimation.to,
+          dir: moveAnimation.dir,
+          progress: moveAnimation.progress,
+          exiting: moveAnimation.exiting,
+        }
+      : null,
   });
   renderAccessibleBoard(s);
   updateHud();
@@ -629,7 +659,7 @@ async function startLevel(
   key: string | null = null,
   replacementConfirmed = false,
 ): Promise<void> {
-  if (!pack) return;
+  if (!pack || moveAnimation) return;
   const level = getLevel(pack, id);
   if (!level) return;
   if (mode === 'campaign') {
@@ -689,14 +719,6 @@ function startDaily(): void {
     return;
   }
   void startLevel(levelId, 'daily', key);
-}
-
-function onFail(reason: string): void {
-  vibrate(40);
-  const el = document.getElementById('fail-reason')!;
-  el.textContent = reason === 'wall' ? 'Hit a wall.' : 'Hit another arrow.';
-  showDialog(failEl, 'btn-fail-retry');
-  void showInterstitial('fail');
 }
 
 function onWin(): void {
@@ -767,31 +789,111 @@ function legacyCopy(text: string): void {
   }
 }
 
+function showBlockedFeedback(
+  x: number,
+  y: number,
+  trace: ReturnType<typeof traceFire>,
+  moved: boolean,
+): void {
+  if (blockedFeedbackTimer) window.clearTimeout(blockedFeedbackTimer);
+  const blocker = trace.blocker;
+  if (!blocker || (trace.result !== 'collision' && trace.result !== 'wall')) return;
+  const blockerName = trace.result === 'wall' ? 'wall' : 'another arrow';
+  const destination = trace.path[trace.path.length - 1]!;
+  flashPath = trace.path;
+  blockedCell = blocker;
+  render();
+  if (moved) {
+    announceBoard(
+      `Arrow from row ${y + 1}, column ${x + 1} stopped at row ${destination.y + 1}, column ${destination.x + 1} before ${blockerName} at row ${blocker.y + 1}, column ${blocker.x + 1}. Move ${state().movesMade}.`,
+    );
+    showToast(`Path blocked by ${blockerName}; arrow stopped just before it.`);
+  } else {
+    announceBoard(
+      `Arrow at row ${y + 1}, column ${x + 1} could not move: ${blockerName} is immediately ahead at row ${blocker.y + 1}, column ${blocker.x + 1}. No move recorded.`,
+    );
+    showToast(`Path blocked by ${blockerName}. No movement.`);
+  }
+  blockedFeedbackTimer = window.setTimeout(() => {
+    blockedFeedbackTimer = 0;
+    flashPath = null;
+    blockedCell = null;
+    render();
+  }, 900);
+}
+
 function tryFire(x: number, y: number): void {
-  if (!engine || pendingFireTimer) return;
+  if (!engine || moveAnimation) return;
   const s = state();
   if (s.status !== 'playing') return;
   const cell = s.cells[y * s.w + x];
   if (!cell || cell.kind !== 'arrow') return;
 
   const traced = traceFire(s, x, y);
+  if (traced.result === 'invalid') return;
+  if (blockedFeedbackTimer) {
+    window.clearTimeout(blockedFeedbackTimer);
+    blockedFeedbackTimer = 0;
+  }
+  flashPath = null;
+  blockedCell = null;
+  if (traced.result !== 'clear' && traced.path.length === 1) {
+    showBlockedFeedback(x, y, traced, false);
+    return;
+  }
+
+  const destination = traced.result === 'clear'
+    ? traced.exitCell
+    : traced.path[traced.path.length - 1];
+  if (!destination) return;
+  hintCell = null;
+  moveAnimation = {
+    x,
+    y,
+    from: { x, y },
+    to: destination,
+    dir: cell.dir,
+    trace: traced,
+    startedAt: 0,
+    progress: 0,
+    exiting: traced.result === 'clear',
+  };
   flashPath = traced.path;
-  render();
-  pendingFireTimer = window.setTimeout(() => {
-    pendingFireTimer = 0;
-    flashPath = null;
-    const result = engine!.fire(x, y);
-    hintCell = null;
+
+  const animate = (now: number): void => {
+    if (!moveAnimation) return;
+    if (moveAnimation.startedAt === 0) moveAnimation.startedAt = now;
+    moveAnimation.progress = Math.min(1, (now - moveAnimation.startedAt) / 270);
     render();
-    if (!result.ok) {
-      if (result.reason === 'collision' || result.reason === 'wall') {
-        persistActivePuzzle();
-        const blocker = result.reason === 'wall' ? 'a wall' : 'another arrow';
-        announceBoard(`Arrow at row ${y + 1}, column ${x + 1} failed: its path hit ${blocker}.`);
-        onFail(result.reason);
-      }
+    if (moveAnimation.progress < 1) {
+      moveAnimationFrame = window.requestAnimationFrame(animate);
       return;
     }
+
+    moveAnimationFrame = 0;
+    const completedMove = moveAnimation;
+    moveAnimation = null;
+    flashPath = null;
+    blockedCell = null;
+    const result = engine!.fire(completedMove.x, completedMove.y);
+    if (!result.ok) {
+      render();
+      return;
+    }
+
+    if (!result.exited) {
+      const stop = result.trace.path[result.trace.path.length - 1]!;
+      activeCellIndex = stop.y * result.state.w + stop.x;
+      blockedCell = result.trace.blocker;
+      render();
+      persistActivePuzzle();
+      showBlockedFeedback(completedMove.x, completedMove.y, result.trace, true);
+      vibrate(12);
+      return;
+    }
+
+    activeCellIndex = completedMove.y * result.state.w + completedMove.x;
+    render();
     if (result.won) {
       clearActivePuzzle();
       announceBoard('Board cleared. All arrows have left the board.');
@@ -801,10 +903,13 @@ function tryFire(x: number, y: number): void {
       const remaining = result.state.arrowsRemaining;
       const arrowWord = remaining === 1 ? 'arrow' : 'arrows';
       const remainVerb = remaining === 1 ? 'remains' : 'remain';
-      announceBoard(`Arrow at row ${y + 1}, column ${x + 1} cleared. ${remaining} ${arrowWord} ${remainVerb}.`);
+      announceBoard(
+        `Arrow at row ${y + 1}, column ${x + 1} cleared. Move ${result.state.movesMade}. ${remaining} ${arrowWord} ${remainVerb}.`,
+      );
       vibrate(12);
     }
-  }, 90);
+  };
+  moveAnimationFrame = window.requestAnimationFrame(animate);
 }
 
 function doRetry(): void {
@@ -834,7 +939,7 @@ function restartPuzzle(): void {
 }
 
 function tryUndo(): void {
-  if (!engine) return;
+  if (!engine || moveAnimation) return;
   if (!engine.canUndo()) return;
   const s = state();
   if (s.undosLeft > 0) {
@@ -856,7 +961,7 @@ function tryUndo(): void {
 }
 
 function tryHint(): void {
-  if (!engine) return;
+  if (!engine || moveAnimation) return;
   if (state().status !== 'playing') return;
   rewardAction = 'hint';
   document.getElementById('reward-title')!.textContent = 'Hint';

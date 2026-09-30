@@ -19,7 +19,7 @@ describe('spoken puzzle board descriptions', () => {
 
   it('announces arrow direction and the position of an arrow blocking its path', () => {
     expect(describeBoardCell(state, 0, 0)).toBe(
-      'Row 1, column 1: arrow pointing east. Path is blocked by another arrow at row 1, column 3.',
+      'Row 1, column 1: arrow pointing east. Path is blocked by another arrow at row 1, column 3; the arrow can slide to row 1, column 2.',
     );
   });
 
@@ -42,7 +42,7 @@ describe('spoken puzzle board descriptions', () => {
       ],
     };
     expect(describeBoardCell(createState(wallLevel), 0, 0)).toBe(
-      'Row 1, column 1: arrow pointing south. Path is blocked by wall at row 2, column 1.',
+      'Row 1, column 1: arrow pointing south. Cannot move; wall is immediately ahead at row 2, column 1.',
     );
   });
 

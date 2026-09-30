@@ -48,6 +48,14 @@ export interface DrawOpts {
   hint?: { x: number; y: number } | null;
   flashPath?: { x: number; y: number }[] | null;
   failFlash?: boolean;
+  blockedCell?: { x: number; y: number } | null;
+  movingArrow?: {
+    from: { x: number; y: number };
+    to: { x: number; y: number };
+    dir: Dir;
+    progress: number;
+    exiting: boolean;
+  } | null;
 }
 
 export function drawBoard(
@@ -88,10 +96,47 @@ export function drawBoard(
       if (c.kind === 'wall') {
         drawWall(ctx, x * cell, y * cell, cell, pad);
       } else if (c.kind === 'arrow') {
+        if (opts.movingArrow?.from.x === x && opts.movingArrow.from.y === y) continue;
         const isHint = opts.hint && opts.hint.x === x && opts.hint.y === y;
         drawArrow(ctx, cx, cy, cell, c.dir, isHint ? COLORS.hint : COLORS.arrow, !!isHint);
       }
     }
+  }
+
+  if (opts.movingArrow) {
+    const { from, to, dir, progress, exiting } = opts.movingArrow;
+    const eased = progress * progress * (3 - 2 * progress);
+    const fromX = (from.x + 0.5) * cell;
+    const fromY = (from.y + 0.5) * cell;
+    const toX = (to.x + 0.5) * cell;
+    const toY = (to.y + 0.5) * cell;
+    const fade = exiting ? Math.max(0, Math.min(1, (progress - 0.68) / 0.32)) : 0;
+    const opacity = 1 - fade;
+    if (opacity > 0) {
+      ctx.save();
+      ctx.globalAlpha = opacity;
+      drawArrow(
+        ctx,
+        fromX + (toX - fromX) * eased,
+        fromY + (toY - fromY) * eased,
+        cell * (1 - fade * 0.22),
+        dir,
+        COLORS.arrow,
+        false,
+      );
+      ctx.restore();
+    }
+  }
+
+  if (opts.blockedCell) {
+    const { x, y } = opts.blockedCell;
+    ctx.save();
+    ctx.fillStyle = 'rgba(255, 42, 109, 0.24)';
+    ctx.fillRect(x * cell + pad, y * cell + pad, cell - pad * 2, cell - pad * 2);
+    ctx.strokeStyle = COLORS.fail;
+    ctx.lineWidth = Math.max(2, cell * 0.045);
+    ctx.strokeRect(x * cell + pad * 2, y * cell + pad * 2, cell - pad * 4, cell - pad * 4);
+    ctx.restore();
   }
 
   if (opts.failFlash || state.status === 'failed') {

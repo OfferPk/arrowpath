@@ -34,9 +34,11 @@ export interface GameState {
   status: Status;
   /** Remaining free undos this level (starts at 3). */
   undosLeft: number;
-  /** Fail reason when status === 'failed' */
+  /** Legacy fail reason retained for older saved puzzles. */
   failReason?: 'collision' | 'wall';
   arrowsRemaining: number;
+  /** Number of actual arrow movements, including partial slides and exits. */
+  movesMade: number;
 }
 
 export const DIR_DELTA: Record<Dir, { dx: number; dy: number }> = {

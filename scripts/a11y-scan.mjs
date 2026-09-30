@@ -291,14 +291,29 @@ try {
   await scan(page, 'active puzzle board (Level 2)');
 
   const blockedCell = page.locator('#board-access [role="gridcell"][aria-disabled="false"][aria-label*="Path is blocked"]').first();
-  assert.ok(await blockedCell.count(), 'Level 2 should expose a blocked arrow for the failure dialog scan');
+  assert.ok(await blockedCell.count(), 'Level 2 should expose an arrow with a blocked path');
   await blockedCell.click();
-  await page.locator('#overlay-fail:not([hidden])').waitFor({ timeout: 3000 });
-  assert.equal(await page.evaluate(() => document.activeElement?.id), 'btn-fail-retry', 'failure dialog should receive initial focus');
-  await scan(page, 'failure dialog');
-  await page.keyboard.press('Escape');
-  await page.locator('#overlay-fail').waitFor({ state: 'hidden' });
-  assert.ok(await page.evaluate(() => document.activeElement?.closest('#board-access') !== null), 'closing failure dialog should restore focus to the board');
+  await page.waitForFunction(() => {
+    const saved = JSON.parse(localStorage.getItem('arrowpath:v1:active-puzzle') ?? 'null');
+    return saved?.engine.state.movesMade === 1 && saved.engine.state.arrowsRemaining === 2;
+  });
+  assert.equal(await page.locator('#overlay-fail:not([hidden])').count(), 0, 'a blocked arrow should stop instead of opening the retired failure dialog');
+  assert.match(
+    await page.locator('#board-announcement').textContent() ?? '',
+    /stopped at row 2, column 2 before another arrow at row 2, column 3/i,
+    'the board should announce the legal stop cell and blocker location',
+  );
+  const stoppedState = await page.evaluate(() => JSON.parse(localStorage.getItem('arrowpath:v1:active-puzzle') ?? 'null').engine);
+  assert.equal(stoppedState.state.status, 'playing');
+  assert.equal(stoppedState.state.movesMade, 1);
+  assert.equal(stoppedState.state.arrowsRemaining, 2, 'a partial slide must not decrement the arrows-left counter');
+  assert.equal(stoppedState.history.length, 1, 'a partial slide must be undoable');
+  assert.deepEqual(stoppedState.state.cells.slice(3, 6), [
+    { kind: 'empty' },
+    { kind: 'arrow', dir: 'E' },
+    { kind: 'arrow', dir: 'E' },
+  ]);
+  await scan(page, 'blocked Level 2 slide feedback');
 
   await page.locator('#btn-retry').click();
   await page.locator('#overlay-puzzle-confirm:not([hidden])').waitFor();
@@ -310,7 +325,10 @@ try {
   assert.ok(await safeAfterRetry.count(), 'Level 2 should retain a safe arrow after retry');
   await safeAfterRetry.focus();
   await page.keyboard.press('Space');
-  await page.waitForTimeout(120);
+  await page.waitForFunction(() => {
+    const saved = JSON.parse(localStorage.getItem('arrowpath:v1:active-puzzle') ?? 'null');
+    return saved?.engine.state.movesMade === 1 && saved.engine.state.arrowsRemaining === 1;
+  }, null, { timeout: 5000 });
   assert.match(await page.locator('#board-announcement').textContent() ?? '', /1 arrow remains\./, 'Space should fire the focused safe arrow');
   const lastArrow = page.locator('#board-access [role="gridcell"][aria-disabled="false"][aria-label*="Path is clear to the board edge"]').first();
   await lastArrow.focus();
@@ -532,7 +550,10 @@ try {
   assert.ok(await safeTouch.count(), 'Level 50 should expose a safe arrow for touch');
   const arrowsBeforeTouch = Number(await touchPage.locator('#hud-left').textContent());
   await safeTouch.tap();
-  await touchPage.waitForTimeout(120);
+  await touchPage.waitForFunction((before) => {
+    const saved = JSON.parse(localStorage.getItem('arrowpath:v1:active-puzzle') ?? 'null');
+    return saved?.engine.state.arrowsRemaining < before;
+  }, arrowsBeforeTouch, { timeout: 5000 });
   const arrowsAfterTouch = Number(await touchPage.locator('#hud-left').textContent());
   assert.ok(arrowsAfterTouch < arrowsBeforeTouch, 'tapping a safe arrow should still fire it');
   const stateBeforeActiveRunPickerNavigation = await touchPage.evaluate(() => Object.fromEntries(
@@ -778,7 +799,10 @@ try {
     const arrowsBeforePortraitFire = Number(await touchPage.locator('#hud-left').textContent());
     await safePortraitArrow.focus();
     await touchPage.keyboard.press(viewport.width === 320 ? 'Enter' : 'Space');
-    await touchPage.waitForTimeout(120);
+    await touchPage.waitForFunction((before) => {
+      const saved = JSON.parse(localStorage.getItem('arrowpath:v1:active-puzzle') ?? 'null');
+      return saved?.engine.state.arrowsRemaining < before;
+    }, arrowsBeforePortraitFire, { timeout: 5000 });
     const arrowsAfterPortraitFire = Number(await touchPage.locator('#hud-left').textContent());
     assert.ok(arrowsAfterPortraitFire < arrowsBeforePortraitFire, 'portrait Enter/Space should fire the selected safe arrow');
     console.log(
@@ -827,8 +851,16 @@ try {
       '#board-access [role="gridcell"][aria-disabled="false"][aria-label*="Path is clear to the board edge"]',
     ).first();
     await safeFinalArrow.waitFor({ timeout: 5000 });
+    const arrowsBeforeMove = Number(await finalCampaignPage.locator('#hud-left').textContent());
     await safeFinalArrow.tap();
-    await finalCampaignPage.waitForTimeout(120);
+    if (arrowsBeforeMove <= 1) {
+      await finalCampaignPage.locator('#overlay-win:not([hidden])').waitFor({ timeout: 5000 });
+    } else {
+      await finalCampaignPage.waitForFunction((before) => {
+        const saved = JSON.parse(localStorage.getItem('arrowpath:v1:active-puzzle') ?? 'null');
+        return saved?.engine.state.arrowsRemaining < before;
+      }, arrowsBeforeMove, { timeout: 5000 });
+    }
   }
   await finalCampaignPage.locator('#overlay-win:not([hidden])').waitFor({ timeout: 5000 });
   assert.ok(finalLevelArrowsFired > 0, 'the final campaign level should be completed through safe player moves');
