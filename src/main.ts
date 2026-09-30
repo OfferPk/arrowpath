@@ -56,6 +56,7 @@ let suspendedDialog: HTMLElement | null = null;
 let suspendedDialogFocus: HTMLElement | null = null;
 let rewardAttempt = 0;
 let toastTimer = 0;
+let dailyHomeRefreshTimer = 0;
 let blockedFeedbackTimer = 0;
 let moveAnimationFrame = 0;
 let moveAnimation: {
@@ -285,6 +286,23 @@ function setupPwaUpdates(): void {
   document.addEventListener('visibilitychange', scheduleForegroundUpdateCheck);
 }
 
+function scheduleDailyHomeRefresh(): void {
+  if (dailyHomeRefreshTimer) window.clearTimeout(dailyHomeRefreshTimer);
+  const now = new Date();
+  const [year, month, day] = dailyKeyKarachi(now).split('-').map(Number);
+  const nextMidnightUtc = Date.UTC(year, month - 1, day + 1) - 5 * 60 * 60 * 1000;
+  const delay = Math.max(1, nextMidnightUtc - now.getTime());
+  dailyHomeRefreshTimer = window.setTimeout(() => {
+    dailyHomeRefreshTimer = 0;
+    const home = document.querySelector<HTMLElement>('.screen[data-screen="home"]');
+    if (home && !home.hidden) {
+      updateHome();
+    } else {
+      scheduleDailyHomeRefresh();
+    }
+  }, delay);
+}
+
 function updateHome(): void {
   const p = getProgress();
   const total = pack?.levels.length ?? 50;
@@ -308,6 +326,7 @@ function updateHome(): void {
   const dailyButton = document.getElementById('btn-daily') as HTMLButtonElement;
   dailyButton.disabled = Boolean(rec?.completed);
   dailyButton.textContent = rec?.completed ? 'Daily complete' : 'Daily Challenge';
+  scheduleDailyHomeRefresh();
 }
 
 function updateSettingsUi(): void {

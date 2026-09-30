@@ -15,6 +15,7 @@
     "test:reduced-motion": "node scripts/reduced-motion-check.mjs",
     "test:resume": "node scripts/puzzle-resume-check.mjs",
     "test:daily-pointer": "node scripts/daily-pointer-doubleclick-check.mjs",
+    "test:daily-rollover": "node scripts/daily-midnight-rollover-check.mjs",
     "test:pwa": "npm run build && node scripts/pwa-update-check.mjs",
     "publish:pages": "bash scripts/publish-pages.sh"
   },
