@@ -1001,9 +1001,10 @@ function wire(): void {
   document.getElementById('btn-levels')!.addEventListener('click', () => {
     openLevelSelect('home', document.getElementById('btn-levels')!);
   });
-  document.getElementById('btn-howto')!.addEventListener('click', () =>
-    showScreen('howto'),
-  );
+  document.getElementById('btn-howto')!.addEventListener('click', () => {
+    showScreen('howto');
+    document.getElementById('howto-title')?.focus({ preventScroll: true });
+  });
   document.getElementById('btn-howto-ok')!.addEventListener('click', () => {
     setOnboarded();
     updateHome();

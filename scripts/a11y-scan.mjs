@@ -92,6 +92,29 @@ try {
   await page.locator('[data-screen="home"]:not([hidden])').waitFor();
   await scan(page, 'home');
 
+  await page.locator('#btn-howto').focus();
+  await page.keyboard.press('Enter');
+  await page.locator('[data-screen="howto"]:not([hidden])').waitFor();
+  assert.equal(
+    await page.evaluate(() => document.activeElement?.id),
+    'howto-title',
+    'Home → How-to should move keyboard focus to the new screen heading',
+  );
+  await scan(page, 'How-to opened from Home');
+  await page.keyboard.press('Tab');
+  assert.equal(
+    await page.evaluate(() => document.activeElement?.id),
+    'btn-howto-ok',
+    'Tab after the How-to heading should reach Got it',
+  );
+  await page.locator('#btn-howto-ok').click();
+  await page.locator('[data-screen="home"]:not([hidden])').waitFor();
+  assert.equal(
+    await page.evaluate(() => document.activeElement?.id),
+    'btn-howto',
+    'finishing How-to should return focus to its Home trigger',
+  );
+
   await page.locator('#btn-levels').click();
   assert.equal(
     await page.evaluate(() => document.activeElement === document.querySelector('#level-grid .current')),
