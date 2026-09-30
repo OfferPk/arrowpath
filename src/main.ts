@@ -25,6 +25,7 @@ import {
 import { completeLevelWithoutWaitingForAd } from './game/completion';
 import { drawBoard, resizeCanvas } from './ui/canvas';
 import { describeBoard, describeBoardCell } from './ui/accessibility';
+import { describeRestoredRunStatus } from './ui/resume-status';
 import { manageDialogKeydown } from './ui/dialog';
 import { registerSW } from 'virtual:pwa-register';
 import { getUpdateNoticePresentation } from './ui/pwa-update';
@@ -48,6 +49,7 @@ let suspendedDialog: HTMLElement | null = null;
 let suspendedDialogFocus: HTMLElement | null = null;
 let rewardAttempt = 0;
 let toastTimer = 0;
+let resumeNoticeVisible = false;
 let hasUnfinishedPuzzle = false;
 let pwaUpdateAvailable = false;
 let pwaUpdateDismissed = false;
@@ -75,6 +77,7 @@ const updateNoticeMessage = document.getElementById('pwa-update-message')!;
 const updateNoticeButton = document.getElementById('btn-pwa-update') as HTMLButtonElement;
 
 function showScreen(name: string): void {
+  if (name !== 'play') hideResumeNotice();
   document.querySelectorAll<HTMLElement>('.screen').forEach((el) => {
     el.hidden = el.dataset.screen !== name;
   });
@@ -111,13 +114,26 @@ function vibrate(ms: number): void {
   }
 }
 
-function showToast(msg: string): void {
-  toastEl.textContent = msg;
-  toastEl.hidden = false;
+function hideResumeNotice(): void {
+  if (!resumeNoticeVisible) return;
   window.clearTimeout(toastTimer);
+  toastTimer = 0;
+  toastEl.textContent = '';
+  toastEl.hidden = true;
+  resumeNoticeVisible = false;
+}
+
+function showToast(msg: string, durationMs = 1800, isResumeNotice = false): void {
+  toastEl.hidden = false;
+  toastEl.textContent = msg;
+  window.clearTimeout(toastTimer);
+  resumeNoticeVisible = isResumeNotice;
   toastTimer = window.setTimeout(() => {
     toastEl.hidden = true;
-  }, 1800);
+    toastEl.textContent = '';
+    toastTimer = 0;
+    resumeNoticeVisible = false;
+  }, durationMs);
 }
 
 function currentScreen(): string {
@@ -1098,7 +1114,20 @@ async function boot(): Promise<void> {
   } else {
     showScreen('home');
   }
-  resumeSavedPuzzle();
+  if (resumeSavedPuzzle() && engine) {
+    const poursCompleted =
+      engine.getLevel().cells.filter((cell) => cell.t === 'arrow').length -
+      state().arrowsRemaining;
+    showToast(
+      describeRestoredRunStatus({
+        levelId: currentId,
+        mode: playMode,
+        poursCompleted,
+      }),
+      5000,
+      true,
+    );
+  }
   setupPwaUpdates();
 }
 

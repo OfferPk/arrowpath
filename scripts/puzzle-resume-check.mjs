@@ -106,6 +106,9 @@ try {
   const page = await context.newPage();
   await page.goto(baseUrl, { waitUntil: 'networkidle' });
   await page.locator('[data-screen="home"]:not([hidden])').waitFor();
+  const resumeStatus = page.locator('#toast');
+  assert.equal(await resumeStatus.isVisible(), false, 'a fresh visit must not announce a restored run');
+  await scanAxe(page, 'fresh Home screen');
   const progressBefore = await page.evaluate((key) => localStorage.getItem(key), `${PREFIX}progress`);
   const settingsBefore = await page.evaluate((key) => localStorage.getItem(key), `${PREFIX}settings`);
   const dailyBefore = await page.evaluate((key) => localStorage.getItem(key), `${PREFIX}daily:2026-09-30`);
@@ -113,6 +116,8 @@ try {
   await page.locator('#btn-levels').click();
   await page.getByRole('button', { name: '2', exact: true }).click();
   await page.locator('[data-screen="play"]:not([hidden])').waitFor();
+  assert.equal(await resumeStatus.isVisible(), false, 'starting a fresh puzzle must not announce a restore');
+  await scanAxe(page, 'fresh puzzle');
   await page.locator('#board-access button[data-x="2"][data-y="1"]').click();
   await waitForState(page, { levelId: 2, arrowsRemaining: 1 });
   const levelTwoAfterMove = await readSnapshot(page);
@@ -126,6 +131,7 @@ try {
   await page.locator('#btn-play').click();
   await page.locator('[data-screen="play"]:not([hidden])').waitFor();
   assert.deepEqual(await readSnapshot(page), levelTwoAfterMove);
+  assert.equal(await resumeStatus.isVisible(), false, 'same-page Home/Play must not announce a restore');
   console.log('PASS Home then Play resumes the same unsolved board');
 
   await page.locator('#btn-play-levels').click();
@@ -136,6 +142,7 @@ try {
   await page.locator('[data-screen="home"]:not([hidden])').waitFor();
   await page.locator('#btn-play').click();
   assert.deepEqual(await readSnapshot(page), levelTwoAfterMove, 'Level Select Back and Home Play must preserve the same run');
+  assert.equal(await resumeStatus.isVisible(), false, 'same-page Level Select navigation must stay silent');
   console.log('PASS same-level selection and Level Select Back/Home preserve the active run');
 
   await page.locator('#btn-play-levels').click();
@@ -181,6 +188,19 @@ try {
   await page.reload({ waitUntil: 'networkidle' });
   await page.locator('[data-screen="play"]:not([hidden])').waitFor();
   assert.deepEqual(await readSnapshot(page), current, 'reload must restore the exact board and undo stack');
+  await resumeStatus.waitFor({ state: 'visible' });
+  assert.equal(await resumeStatus.textContent(), 'Resumed Level 3. 1 pour completed.');
+  assert.equal(await resumeStatus.getAttribute('role'), 'status');
+  assert.equal(await resumeStatus.getAttribute('aria-live'), 'polite');
+  assert.equal(await resumeStatus.getAttribute('aria-atomic'), 'true');
+  assert.ok(
+    await page.evaluate(() => document.activeElement?.closest('#board-access') !== null),
+    'the restore notice must not steal focus from the board',
+  );
+  assert.equal(await page.evaluate((key) => localStorage.getItem(key), `${PREFIX}progress`), progressBefore);
+  assert.equal(await page.evaluate((key) => localStorage.getItem(key), `${PREFIX}settings`), settingsBefore);
+  assert.equal(await page.evaluate((key) => localStorage.getItem(key), `${PREFIX}daily:2026-09-30`), dailyBefore);
+  await scanAxe(page, 'restored puzzle with status');
   await page.locator('#btn-undo').click();
   await waitForState(page, { levelId: 3, arrowsRemaining: 3 });
   current = await readSnapshot(page);
@@ -189,10 +209,12 @@ try {
   console.log('PASS true reload restores the exact run and Undo remains functional');
 
   await page.locator('#btn-play-levels').click();
+  assert.equal(await resumeStatus.isVisible(), false, 'leaving the restored run must dismiss its one-time status');
   await page.locator('#btn-levels-back').click();
   await page.locator('[data-screen="home"]:not([hidden])').waitFor();
   await page.locator('#btn-play').click();
   assert.deepEqual(await readSnapshot(page), current, 'Back/Home/Play must retain the restored board after Undo');
+  assert.equal(await resumeStatus.isVisible(), false, 'same-page return to a restored run must not announce it again');
 
   for (const point of [{ x: 0, y: 0 }, { x: 3, y: 1 }]) {
     await page.locator(`#board-access button[data-x="${point.x}"][data-y="${point.y}"]`).click();

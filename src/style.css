@@ -307,6 +307,8 @@ html, body {
   border-radius: 12px;
   font-size: 0.9rem;
   font-weight: 600;
+  max-width: calc(100vw - 32px);
+  text-align: center;
   box-shadow: 0 0 24px rgba(45, 226, 230, 0.2);
   pointer-events: none;
 }
