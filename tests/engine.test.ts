@@ -11,7 +11,7 @@ import {
   traceFire,
   levelToBoard,
 } from '../src/game/engine';
-import type { LevelDef } from '../src/game/types';
+import type { GameState, LevelDef } from '../src/game/types';
 import { FREE_UNDOS } from '../src/game/types';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -19,6 +19,29 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 function loadPack(): { levels: LevelDef[] } {
   const raw = readFileSync(join(__dirname, '../public/levels.json'), 'utf8');
   return JSON.parse(raw) as { levels: LevelDef[] };
+}
+
+function shortestSolutionDepth(level: LevelDef): number | null {
+  const start = createState(level);
+  const key = (state: GameState) =>
+    state.cells.map((cell) => (cell.kind === 'arrow' ? '1' : '0')).join('');
+  const queue: { state: GameState; depth: number }[] = [{ state: start, depth: 0 }];
+  const seen = new Set([key(start)]);
+
+  for (let cursor = 0; cursor < queue.length; cursor++) {
+    const { state, depth } = queue[cursor]!;
+    if (state.status === 'won') return depth;
+    for (let i = 0; i < state.cells.length; i++) {
+      if (state.cells[i]!.kind !== 'arrow') continue;
+      const result = fireArrow(state, i % state.w, Math.floor(i / state.w));
+      if (!result.ok) continue;
+      const nextKey = key(result.state);
+      if (seen.has(nextKey)) continue;
+      seen.add(nextKey);
+      queue.push({ state: result.state, depth: depth + 1 });
+    }
+  }
+  return null;
 }
 
 /** Tiny hand fixture: two arrows; east must clear first. */
@@ -209,6 +232,18 @@ describe('level pack load', () => {
       }
       expect(s.status).toBe('won');
     }
+  });
+
+  it('keeps every level solvable at exact minimum depth and preserves the tutorial ramp', () => {
+    const depths = loadPack().levels.map((level) => {
+      const depth = shortestSolutionDepth(level);
+      expect(depth, `level ${level.id} unsolvable`).not.toBeNull();
+      expect(depth, `level ${level.id} must clear one arrow per pour`).toBe(
+        level.cells.filter((cell) => cell.t === 'arrow').length,
+      );
+      return depth;
+    });
+    expect(depths.slice(0, 5)).toEqual([1, 2, 3, 4, 5]);
   });
 
   it('levelToBoard places walls and arrows', () => {
