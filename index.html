@@ -12,9 +12,9 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="manifest" href="/arrowpath/manifest.webmanifest" />
     <title>ArrowPath</title>
-    <script type="module" crossorigin src="/arrowpath/assets/index-RNi_h8uT.js"></script>
-    <link rel="stylesheet" crossorigin href="/arrowpath/assets/index-DdNFn5qS.css">
-  <script id="vite-plugin-pwa:register-sw" src="/arrowpath/registerSW.js"></script></head>
+    <script type="module" crossorigin src="/arrowpath/assets/index-DELo3dwn.js"></script>
+    <link rel="stylesheet" crossorigin href="/arrowpath/assets/index-DZyGAk4w.css">
+  </head>
   <body>
     <main id="app">
       <!-- HOME -->
@@ -132,6 +132,21 @@
       <div id="a2hs" class="a2hs" hidden>
         <span>Install ArrowPath: browser menu → <strong>Add to Home Screen</strong></span>
         <button type="button" id="a2hs-ok" class="btn tiny">OK</button>
+      </div>
+      <section id="pwa-update-notice" class="pwa-update" aria-label="App update" aria-live="polite" aria-atomic="true" hidden>
+        <p id="pwa-update-message"></p>
+        <div class="pwa-update-actions">
+          <button type="button" id="btn-pwa-update" class="btn primary tiny">Reload to update</button>
+          <button type="button" id="btn-pwa-update-later" class="btn ghost tiny">Not now</button>
+        </div>
+      </section>
+      <div id="overlay-update" class="overlay" role="dialog" aria-modal="true" aria-labelledby="update-confirm-title" aria-describedby="update-confirm-body" tabindex="-1" hidden>
+        <div class="panel">
+          <h2 id="update-confirm-title">Install update?</h2>
+          <p class="go-meta" id="update-confirm-body">Reloading this page can restart an unfinished puzzle. Cleared progress remains saved.</p>
+          <button type="button" class="btn primary" id="btn-update-confirm">Restart puzzle and update</button>
+          <button type="button" class="btn ghost" id="btn-update-cancel">Keep playing</button>
+        </div>
       </div>
     </main>
   </body>
