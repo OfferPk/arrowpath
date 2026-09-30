@@ -246,10 +246,33 @@ function layout(): void {
   if (!engine) return;
   const s = state();
   const wrap = board.parentElement!;
+  const playScreen = document.querySelector<HTMLElement>('.screen[data-screen="play"]')!;
   const compactLandscape = window.matchMedia(
     '(orientation: landscape) and (max-height: 360px)',
   ).matches;
-  const heightLimit = window.innerHeight * (compactLandscape ? 0.7 : 0.55);
+  const shortLandscapeStack = compactLandscape && playScreen.clientHeight < 243;
+  playScreen.classList.toggle('short-landscape-layout', shortLandscapeStack);
+  const appStyle = getComputedStyle(document.getElementById('app')!);
+  const appTopPadding = Number.parseFloat(appStyle.paddingTop);
+  const appBottomPadding = Number.parseFloat(appStyle.paddingBottom);
+  // A 308px board makes 44px cells on Level 50. Reuse the normal 12px bottom
+  // gutter only when it is not reserving extra safe-area space.
+  const heightLimit = compactLandscape && !shortLandscapeStack
+    ? playScreen.clientHeight + (appBottomPadding <= 12 ? 12 : 0)
+    : shortLandscapeStack
+      ? Math.max(
+          0,
+          Math.min(
+            window.innerHeight * 0.7 - 1,
+            window.innerHeight -
+              appTopPadding -
+              appBottomPadding -
+              playScreen.querySelector<HTMLElement>('.hud')!.getBoundingClientRect().height -
+              Number.parseFloat(getComputedStyle(playScreen).rowGap) -
+              1,
+          ),
+        )
+      : window.innerHeight * 0.55;
   const css = Math.max(
     0,
     Math.floor(Math.min(wrap.clientWidth, heightLimit)),

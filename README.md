@@ -59,6 +59,8 @@ Authenticate the GitHub CLI or set `GH_TOKEN` / `GITHUB_TOKEN` for the command. 
 
 Clear all arrows to win. Hitting another arrow or a wall fails the try.
 
+In compact landscape, the HUD and 44px action controls sit beside the board. With at least **480 CSS px of usable width** and **308px of safe-area-adjusted height** (for example, a 568×320 viewport with default insets), Level 50's 7×7 cell targets are **44×44 CSS px**. On narrower, shorter, or safe-area-constrained screens, the board and its non-overlapping targets scale together rather than extending hit areas across neighboring cells or introducing page scroll. Keyboard users can move with the arrow keys, use Home/End within a row or Ctrl+Home/Ctrl+End for the corners, fire with Enter or Space, and Tab from the grid to the game controls.
+
 ## Project layout
 
 ```
