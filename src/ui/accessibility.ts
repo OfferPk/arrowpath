@@ -40,3 +40,8 @@ export function describeBoard(state: GameState): string {
   const wallText = walls === 1 ? 'wall' : 'walls';
   return `Level ${state.levelId} puzzle board. ${state.h} rows by ${state.w} columns. ${state.arrowsRemaining} ${arrowText} remaining; ${walls} ${wallText}. Use the arrow keys to move between cells. Press Enter or Space to fire an arrow.`;
 }
+
+/** Confirm the undo action before summarizing the restored board to screen readers. */
+export function describeUndoResult(state: GameState): string {
+  return `Undo complete. ${describeBoard(state)}`;
+}

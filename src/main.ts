@@ -26,7 +26,11 @@ import {
 } from './ads/stubs';
 import { completeLevelWithoutWaitingForAd } from './game/completion';
 import { drawBoard, resizeCanvas } from './ui/canvas';
-import { describeBoard, describeBoardCell } from './ui/accessibility';
+import {
+  describeBoard,
+  describeBoardCell,
+  describeUndoResult,
+} from './ui/accessibility';
 import { describeRestoredRunStatus } from './ui/resume-status';
 import { manageDialogKeydown } from './ui/dialog';
 import { registerSW } from 'virtual:pwa-register';
@@ -1030,7 +1034,7 @@ function tryUndo(): void {
     persistActivePuzzle();
     boardAccess.querySelector<HTMLButtonElement>(`[data-cell-index="${activeCellIndex}"]`)
       ?.focus({ preventScroll: true });
-    announceBoard(describeBoard(state()));
+    announceBoard(describeUndoResult(state()));
     return;
   }
   rewardAction = 'undo';
@@ -1077,7 +1081,7 @@ async function confirmReward(): Promise<void> {
     hintCell = null;
     render();
     persistActivePuzzle();
-    announceBoard(describeBoard(state()));
+    announceBoard(describeUndoResult(state()));
   }
 }
 
