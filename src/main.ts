@@ -30,6 +30,7 @@ import { manageDialogKeydown } from './ui/dialog';
 import { registerSW } from 'virtual:pwa-register';
 import { getUpdateNoticePresentation } from './ui/pwa-update';
 import { getCampaignLevelToHighlight } from './ui/level-select';
+import { getWinActionLabel } from './ui/win-action';
 import type { GameState, LevelDef } from './game/types';
 
 type PlayMode = 'campaign' | 'daily';
@@ -545,13 +546,16 @@ function closeLevelSelect(): void {
 function configureWinOverlay(): void {
   const nextBtn = document.getElementById('btn-next') as HTMLButtonElement;
   const winMeta = document.getElementById('win-meta')!;
+  nextBtn.textContent = getWinActionLabel(
+    playMode,
+    currentId,
+    pack?.levels.length ?? currentId,
+  );
   if (playMode === 'daily') {
-    nextBtn.textContent = 'Continue campaign';
     winMeta.textContent = dailyKey
       ? `Daily ${dailyKey} cleared. Nice neon run.`
       : 'Daily cleared. Nice neon run.';
   } else {
-    nextBtn.textContent = 'Next level';
     winMeta.textContent = 'Neon line clear. Next station?';
   }
 }

@@ -576,6 +576,81 @@ try {
   console.log(`PASS compact landscape touch flow: ${mobileLayout.cellWidth.toFixed(1)}px cells; 44px controls, adjacent-cell accuracy, responsive no-overlap/scroll, touch, and keyboard fit`);
   await touchContext.close();
 
+  const finalCampaignContext = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+    colorScheme: 'dark',
+  });
+  const finalCampaignPage = await finalCampaignContext.newPage();
+  const finalDailyKey = '2030-01-01';
+  const originalFinalSettings = { muted: true, adsRemoved: false };
+  const originalFinalDailyRecord = {
+    completed: true,
+    levelId: 12,
+    finishedAt: '2030-01-01T08:00:00.000Z',
+  };
+  await finalCampaignPage.addInitScript(({ settings, dailyKey, dailyRecord }) => {
+    localStorage.setItem(
+      'arrowpath:v1:progress',
+      JSON.stringify({ unlocked: 50, cleared: Array.from({ length: 49 }, (_, i) => i + 1) }),
+    );
+    localStorage.setItem('arrowpath:v1:onboarded', JSON.stringify({ ok: true }));
+    localStorage.setItem('arrowpath:v1:settings', JSON.stringify(settings));
+    localStorage.setItem(`arrowpath:v1:daily:${dailyKey}`, JSON.stringify(dailyRecord));
+  }, {
+    settings: originalFinalSettings,
+    dailyKey: finalDailyKey,
+    dailyRecord: originalFinalDailyRecord,
+  });
+  await finalCampaignPage.goto(baseUrl, { waitUntil: 'networkidle' });
+  await finalCampaignPage.locator('#btn-play').tap();
+  await finalCampaignPage.locator('#hud-level').waitFor();
+  assert.equal(await finalCampaignPage.locator('#hud-level').textContent(), '50');
+
+  let finalLevelArrowsFired = 0;
+  for (; finalLevelArrowsFired < 49; finalLevelArrowsFired += 1) {
+    if (await finalCampaignPage.locator('#overlay-win').isVisible()) break;
+    const safeFinalArrow = finalCampaignPage.locator(
+      '#board-access [role="gridcell"][aria-disabled="false"][aria-label*="Path is clear to the board edge"]',
+    ).first();
+    await safeFinalArrow.waitFor({ timeout: 5000 });
+    await safeFinalArrow.tap();
+    await finalCampaignPage.waitForTimeout(120);
+  }
+  await finalCampaignPage.locator('#overlay-win:not([hidden])').waitFor({ timeout: 5000 });
+  assert.ok(finalLevelArrowsFired > 0, 'the final campaign level should be completed through safe player moves');
+  assert.equal(await finalCampaignPage.locator('#btn-next').textContent(), 'Back to home');
+  assert.equal(await finalCampaignPage.evaluate(() => document.activeElement?.id), 'btn-next');
+  await scan(finalCampaignPage, 'final campaign completion dialog');
+
+  const stateAfterFinalClear = await finalCampaignPage.evaluate((dailyKey) => ({
+    progress: JSON.parse(localStorage.getItem('arrowpath:v1:progress')),
+    settings: JSON.parse(localStorage.getItem('arrowpath:v1:settings')),
+    dailyRecord: JSON.parse(localStorage.getItem(`arrowpath:v1:daily:${dailyKey}`)),
+    activePuzzle: localStorage.getItem('arrowpath:v1:active-puzzle'),
+  }), finalDailyKey);
+  assert.deepEqual(stateAfterFinalClear.progress, {
+    unlocked: 50,
+    cleared: Array.from({ length: 50 }, (_, i) => i + 1),
+  }, 'finishing the final level should record the clear without changing the unlock ceiling');
+  assert.deepEqual(stateAfterFinalClear.settings, originalFinalSettings);
+  assert.deepEqual(stateAfterFinalClear.dailyRecord, originalFinalDailyRecord);
+  assert.equal(stateAfterFinalClear.activePuzzle, null, 'a won puzzle should no longer remain an active run');
+
+  await finalCampaignPage.locator('#btn-next').tap();
+  await finalCampaignPage.locator('[data-screen="home"]:not([hidden])').waitFor();
+  assert.equal(await finalCampaignPage.evaluate(() => document.activeElement?.id), 'btn-play');
+  const stateAfterHomeReturn = await finalCampaignPage.evaluate((dailyKey) => ({
+    progress: JSON.parse(localStorage.getItem('arrowpath:v1:progress')),
+    settings: JSON.parse(localStorage.getItem('arrowpath:v1:settings')),
+    dailyRecord: JSON.parse(localStorage.getItem(`arrowpath:v1:daily:${dailyKey}`)),
+    activePuzzle: localStorage.getItem('arrowpath:v1:active-puzzle'),
+  }), finalDailyKey);
+  assert.deepEqual(stateAfterHomeReturn, stateAfterFinalClear, 'the Home action should not alter the newly saved campaign state');
+  console.log('PASS final campaign completion: Back to home, return focus, and progress/settings/daily state preserved');
+  await finalCampaignContext.close();
+
   if (failures.length) {
     console.error(`\n${failures.length} axe violation(s) across the scanned views.`);
     process.exitCode = 1;
