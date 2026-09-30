@@ -51,6 +51,7 @@ let suspendedDialog: HTMLElement | null = null;
 let suspendedDialogFocus: HTMLElement | null = null;
 let rewardAttempt = 0;
 let toastTimer = 0;
+let pendingFireTimer = 0;
 let resumeNoticeVisible = false;
 let hasUnfinishedPuzzle = false;
 let pwaUpdateAvailable = false;
@@ -80,8 +81,18 @@ const updateNoticeEl = document.getElementById('pwa-update-notice')!;
 const updateNoticeMessage = document.getElementById('pwa-update-message')!;
 const updateNoticeButton = document.getElementById('btn-pwa-update') as HTMLButtonElement;
 
+function cancelPendingFire(): void {
+  if (!pendingFireTimer) return;
+  window.clearTimeout(pendingFireTimer);
+  pendingFireTimer = 0;
+  flashPath = null;
+}
+
 function showScreen(name: string): void {
-  if (name !== 'play') hideResumeNotice();
+  if (name !== 'play') {
+    hideResumeNotice();
+    cancelPendingFire();
+  }
   document.querySelectorAll<HTMLElement>('.screen').forEach((el) => {
     el.hidden = el.dataset.screen !== name;
   });
@@ -751,7 +762,7 @@ function legacyCopy(text: string): void {
 }
 
 function tryFire(x: number, y: number): void {
-  if (!engine) return;
+  if (!engine || pendingFireTimer) return;
   const s = state();
   if (s.status !== 'playing') return;
   const cell = s.cells[y * s.w + x];
@@ -760,7 +771,8 @@ function tryFire(x: number, y: number): void {
   const traced = traceFire(s, x, y);
   flashPath = traced.path;
   render();
-  window.setTimeout(() => {
+  pendingFireTimer = window.setTimeout(() => {
+    pendingFireTimer = 0;
     flashPath = null;
     const result = engine!.fire(x, y);
     hintCell = null;
@@ -800,6 +812,7 @@ function doRetry(): void {
 
 function restartPuzzle(): void {
   if (!engine) return;
+  cancelPendingFire();
   clearActivePuzzle();
   hasUnfinishedPuzzle = true;
   hideOverlays();

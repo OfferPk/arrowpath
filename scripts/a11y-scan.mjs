@@ -112,6 +112,59 @@ try {
 
   await page.locator('#btn-play').click();
   await page.locator('#board-access [role="gridcell"]').first().waitFor();
+  const storageAfterFreshPlay = await page.evaluate(() => Object.fromEntries(
+    Array.from({ length: localStorage.length }, (_, index) => {
+      const key = localStorage.key(index);
+      return [key, key === null ? null : localStorage.getItem(key)];
+    }).filter(([key]) => key !== null),
+  ));
+  const runAfterFreshPlay = await page.evaluate(() => localStorage.getItem('arrowpath:v1:active-puzzle'));
+  const pendingFlightCell = page.locator('#board-access [role="gridcell"][aria-disabled="false"][aria-label*="Path is clear to the board edge"]').first();
+  await pendingFlightCell.click();
+  await page.locator('#btn-menu').click();
+  await page.waitForTimeout(150);
+  await page.locator('[data-screen="home"]:not([hidden])').waitFor();
+  assert.equal(await page.locator('#overlay-win:not([hidden])').count(), 0, 'leaving during an arrow flight must not open a hidden completion dialog');
+  assert.deepEqual(
+    await page.evaluate(() => Object.fromEntries(
+      Array.from({ length: localStorage.length }, (_, index) => {
+        const key = localStorage.key(index);
+        return [key, key === null ? null : localStorage.getItem(key)];
+      }).filter(([key]) => key !== null),
+    )),
+    storageAfterFreshPlay,
+    'leaving during a pending flight must preserve the active run and every saved record',
+  );
+  await page.keyboard.press('Tab');
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'btn-daily', 'Home keyboard navigation must not be trapped by a hidden completion dialog');
+  await page.locator('#btn-play').click();
+  await page.locator('#board-access [role="gridcell"]').first().waitFor();
+  assert.equal(await page.evaluate(() => localStorage.getItem('arrowpath:v1:active-puzzle')), runAfterFreshPlay, 'returning to Play must resume the unchanged run');
+
+  await page.locator('#board-access [role="gridcell"][aria-disabled="false"][aria-label*="Path is clear to the board edge"]').first().click();
+  await page.locator('#btn-play-levels').click();
+  await page.waitForTimeout(150);
+  await page.locator('[data-screen="levels"]:not([hidden])').waitFor();
+  assert.equal(await page.locator('#overlay-win:not([hidden])').count(), 0, 'opening Level Select during a flight must not open a hidden completion dialog');
+  await page.keyboard.press('Escape');
+  await page.locator('[data-screen="play"]:not([hidden])').waitFor();
+  assert.equal(await page.evaluate(() => localStorage.getItem('arrowpath:v1:active-puzzle')), runAfterFreshPlay, 'leaving through Level Select must preserve the unfinished run');
+
+  await page.locator('#board-access [role="gridcell"][aria-disabled="false"][aria-label*="Path is clear to the board edge"]').first().click();
+  await page.locator('#btn-retry').click();
+  await page.waitForTimeout(150);
+  assert.equal(await page.locator('#overlay-win:not([hidden])').count(), 0, 'restarting during a flight must cancel its stale completion');
+  assert.equal(await page.evaluate(() => localStorage.getItem('arrowpath:v1:active-puzzle')), runAfterFreshPlay, 'restarting during a flight must leave a fresh run instead of firing the old move');
+  assert.deepEqual(
+    await page.evaluate(() => Object.fromEntries(
+      Array.from({ length: localStorage.length }, (_, index) => {
+        const key = localStorage.key(index);
+        return [key, key === null ? null : localStorage.getItem(key)];
+      }).filter(([key]) => key !== null),
+    )),
+    storageAfterFreshPlay,
+    'restart flight cancellation must preserve progress, settings, daily records, and the active run',
+  );
   await scan(page, 'active puzzle board (Level 1)');
 
   const startingCell = Number(await page.evaluate(() => document.activeElement?.getAttribute('data-cell-index')));
