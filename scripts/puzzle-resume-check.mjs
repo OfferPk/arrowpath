@@ -115,6 +115,15 @@ try {
   const dailyBefore = await page.evaluate((key) => localStorage.getItem(key), `${PREFIX}daily:2026-09-30`);
 
   await page.locator('#btn-levels').click();
+  assert.equal(
+    await page.locator('#level-grid .current').textContent(),
+    '3',
+    'without an active run, Level Select should highlight the next unlocked campaign level',
+  );
+  await page.locator('#btn-levels-back').click();
+  await page.locator('[data-screen="home"]:not([hidden])').waitFor();
+
+  await page.locator('#btn-levels').click();
   await page.getByRole('button', { name: '2', exact: true }).click();
   await page.locator('[data-screen="play"]:not([hidden])').waitFor();
   assert.equal(await resumeStatus.isVisible(), false, 'starting a fresh puzzle must not announce a restore');

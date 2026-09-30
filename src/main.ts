@@ -29,6 +29,7 @@ import { describeRestoredRunStatus } from './ui/resume-status';
 import { manageDialogKeydown } from './ui/dialog';
 import { registerSW } from 'virtual:pwa-register';
 import { getUpdateNoticePresentation } from './ui/pwa-update';
+import { getCampaignLevelToHighlight } from './ui/level-select';
 import type { GameState, LevelDef } from './game/types';
 
 type PlayMode = 'campaign' | 'daily';
@@ -840,6 +841,12 @@ function buildLevelSelect(): void {
   const grid = document.getElementById('level-grid')!;
   grid.innerHTML = '';
   const progress = getProgress();
+  const campaignLevelToHighlight = getCampaignLevelToHighlight({
+    activeCampaignLevelId:
+      hasUnfinishedPuzzle && playMode === 'campaign' ? currentId : null,
+    unlockedLevel: progress.unlocked,
+    totalLevels: pack.levels.length,
+  });
   for (const level of pack.levels) {
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -848,7 +855,7 @@ function buildLevelSelect(): void {
     const locked = level.id > progress.unlocked;
     if (locked) btn.classList.add('locked');
     if (progress.cleared.includes(level.id)) btn.classList.add('cleared');
-    if (level.id === currentId && playMode === 'campaign') {
+    if (level.id === campaignLevelToHighlight) {
       btn.classList.add('current');
     }
     btn.disabled = locked;
