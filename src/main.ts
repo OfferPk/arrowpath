@@ -36,6 +36,7 @@ import {
   getCampaignLevelToHighlight,
 } from './ui/level-select';
 import { getWinActionLabel } from './ui/win-action';
+import { handleBoardKeydown } from './ui/board-keyboard';
 import type { Dir, GameState, LevelDef } from './game/types';
 
 type PlayMode = 'campaign' | 'daily';
@@ -1440,31 +1441,14 @@ function wire(): void {
     const s = state();
     const x = Number(button.dataset.x);
     const y = Number(button.dataset.y);
-    let nextX = x;
-    let nextY = y;
-    if ((ev.ctrlKey || ev.metaKey) && ev.key === 'Home') {
-      nextX = 0;
-      nextY = 0;
-    } else if ((ev.ctrlKey || ev.metaKey) && ev.key === 'End') {
-      nextX = s.w - 1;
-      nextY = s.h - 1;
-    } else if (ev.key === 'ArrowLeft') {
-      nextX = Math.max(0, x - 1);
-    } else if (ev.key === 'ArrowRight') {
-      nextX = Math.min(s.w - 1, x + 1);
-    } else if (ev.key === 'ArrowUp') {
-      nextY = Math.max(0, y - 1);
-    } else if (ev.key === 'ArrowDown') {
-      nextY = Math.min(s.h - 1, y + 1);
-    } else if (ev.key === 'Home') {
-      nextX = 0;
-    } else if (ev.key === 'End') {
-      nextX = s.w - 1;
-    } else {
-      return;
-    }
-    ev.preventDefault();
-    setActiveCell(nextY * s.w + nextX);
+    handleBoardKeydown(
+      ev,
+      { x, y },
+      s.w,
+      s.h,
+      (position) => setActiveCell(position.y * s.w + position.x),
+      () => tryFire(x, y),
+    );
   });
 
   window.addEventListener('resize', () => layout());
