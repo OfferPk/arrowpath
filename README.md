@@ -25,6 +25,7 @@ Dev server prints a local URL. With Vite `base: '/arrowpath/'`, open the **`/arr
 ```bash
 npm test          # vitest
 npm run test:movement # Level 10 tap/slide/undo/retry browser regressions
+npm run test:share # mocked Win share/copy success, cancel, and fallback regressions
 npm run test:a11y # axe browser scan; requires Chromium (or set CHROMIUM_PATH)
 npm run test:daily-pointer # native rapid double-click through the Daily screen transition
 npm run test:pwa  # production worker-update and safe-handoff browser test

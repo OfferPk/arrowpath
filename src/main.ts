@@ -842,7 +842,8 @@ function shareWin(): void {
       ? `ArrowPath — cleared Daily ${dailyKey} level ${currentId} (neon metro)`
       : `ArrowPath — cleared level ${currentId} (neon metro)`;
   if (navigator.share) {
-    void navigator.share({ title: 'ArrowPath', text }).catch(() => {
+    void navigator.share({ title: 'ArrowPath', text }).catch((error: unknown) => {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
       copyShare(text);
     });
     return;
