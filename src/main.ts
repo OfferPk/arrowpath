@@ -36,6 +36,7 @@ import {
   getCampaignLevelToHighlight,
 } from './ui/level-select';
 import { getWinActionLabel } from './ui/win-action';
+import { getHudStats } from './ui/hud';
 import type { Dir, GameState, LevelDef } from './game/types';
 
 type PlayMode = 'campaign' | 'daily';
@@ -341,13 +342,13 @@ function updateSettingsUi(): void {
 function updateHud(): void {
   if (!engine) return;
   const s = state();
-  const label =
-    playMode === 'daily' ? `D${s.levelId}` : String(s.levelId);
+  const hud = getHudStats(s, playMode);
   document.getElementById('play-title')!.textContent =
-    playMode === 'daily' ? `Daily challenge ${label}` : `Level ${label}`;
-  document.getElementById('hud-level')!.textContent = label;
-  document.getElementById('hud-left')!.textContent = String(s.arrowsRemaining);
-  document.getElementById('hud-undos')!.textContent = String(s.undosLeft);
+    playMode === 'daily' ? `Daily challenge ${hud.level}` : `Level ${hud.level}`;
+  document.getElementById('hud-level')!.textContent = hud.level;
+  document.getElementById('hud-left')!.textContent = hud.left;
+  document.getElementById('hud-undos')!.textContent = hud.undos;
+  document.getElementById('hud-moves')!.textContent = hud.moves;
 }
 
 function layout(): void {
