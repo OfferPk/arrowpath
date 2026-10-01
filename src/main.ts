@@ -36,6 +36,7 @@ import {
   getCampaignLevelToHighlight,
 } from './ui/level-select';
 import { getWinActionLabel } from './ui/win-action';
+import { handleUndoShortcut } from './ui/undo-shortcut';
 import type { Dir, GameState, LevelDef } from './game/types';
 
 type PlayMode = 'campaign' | 'daily';
@@ -1388,6 +1389,9 @@ function wire(): void {
 
   document.addEventListener('keydown', (event) => {
     const dialog = activeDialog();
+    if (handleUndoShortcut(event, currentScreen(), dialog !== null, tryUndo)) {
+      return;
+    }
     if (!dialog) {
       if (event.key === 'Escape') {
         const screen = currentScreen();

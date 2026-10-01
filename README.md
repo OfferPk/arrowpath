@@ -55,6 +55,7 @@ Authenticate the GitHub CLI or set `GH_TOKEN` / `GITHUB_TOKEN` for the command. 
 |---------|--------|
 | **Tap arrow** | Slide it in its fixed facing direction; it exits if clear or stops just before a blocker |
 | **Undo** | 3 free undos per level; then rewarded stub for extra |
+| **Ctrl+Z / Cmd+Z** | Undo the last move while playing, with the same free and rewarded limits as the Undo button |
 | **Hint** | Rewarded stub → highlight a safe next arrow |
 | **Retry** | Restart level (interstitial stub) |
 | **Daily Challenge** | One PKT (Asia/Karachi) level per day — isolated from campaign progress |
