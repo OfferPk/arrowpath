@@ -39,11 +39,14 @@
             <button type="button" class="icon-btn" id="btn-vehicle-jam-back" aria-label="Back to home">←</button>
             <h1 id="vehicle-jam-title" tabindex="-1">Passenger Jam</h1>
           </header>
-          <p class="vehicle-jam-rules">A van can leave only when its route to the board edge is clear <strong>and</strong> it matches the next passenger. Each departure takes one matching passenger.</p>
-          <p id="vehicle-jam-flow" class="vehicle-jam-flow" aria-live="polite" aria-atomic="true"></p>
+          <p class="vehicle-jam-rules">Tap a bus with a clear route to park it. Passengers board parked buses by color, from the queue front. Each bus holds two and leaves when full; if both bays jam, restart and try a new order.</p>
+          <p id="vehicle-jam-flow" class="vehicle-jam-flow" aria-live="polite" aria-atomic="true">Moves 0 · 16 passengers waiting</p>
+          <p class="vehicle-jam-section-label">Passenger queue <span>board from left to right</span></p>
           <div id="vehicle-jam-queue" class="vehicle-jam-queue" role="list" aria-label="Passengers waiting in order"></div>
-          <div id="vehicle-jam-board" class="vehicle-board" role="group" aria-label="Four by four vehicle board" aria-describedby="vehicle-jam-help"></div>
-          <p id="vehicle-jam-help" class="sr-only">Choose a vehicle to make it leave the board. Vehicles blocked by another vehicle must wait. The passenger queue must be boarded from left to right.</p>
+          <div id="vehicle-jam-board" class="vehicle-board" role="group" aria-label="Six by six bus board" aria-describedby="vehicle-jam-help"></div>
+          <p class="vehicle-jam-section-label parking-heading">Parking bays <span>matching passengers board automatically</span></p>
+          <div id="vehicle-jam-parking" class="vehicle-jam-parking" role="list" aria-label="Two parking bays"></div>
+          <p id="vehicle-jam-help" class="sr-only">Tap any bus whose route to the board edge is clear to send it to an open parking bay. A bus does not need to match the next passenger to park. Passengers board only when the queue-front color matches a parked bus. Each bus holds two passengers and leaves automatically when full. If both bays fill with buses that cannot take the next passenger, restart and try another dispatch order.</p>
           <p id="vehicle-jam-announcement" class="vehicle-jam-announcement" role="status" aria-live="polite" aria-atomic="true"></p>
           <div class="vehicle-jam-actions">
             <button type="button" class="btn secondary" id="btn-vehicle-jam-restart">Restart</button>

@@ -40,10 +40,16 @@ import type { Dir, GameState, LevelDef } from './game/types';
 import {
   createVehicleJamState,
   departVehicle,
+  PASSENGER_CAPACITY,
   VEHICLE_COLOR_LABEL,
   type VehicleJamState,
 } from './game/vehicle-jam';
-import { renderVehicleJamBoard } from './ui/vehicle-jam';
+import {
+  renderPassengerQueue,
+  renderVehicleJamBoard,
+  renderVehicleJamParking,
+  type VehicleJamArrivalCue,
+} from './ui/vehicle-jam';
 
 type PlayMode = 'campaign' | 'daily';
 
@@ -53,6 +59,7 @@ let currentId = 1;
 let playMode: PlayMode = 'campaign';
 let dailyKey: string | null = null;
 let vehicleJamState: VehicleJamState = createVehicleJamState();
+let vehicleJamHomeA2hsHidden: boolean | null = null;
 let cellSize = 40;
 let hintCell: { x: number; y: number } | null = null;
 let flashPath: { x: number; y: number }[] | null = null;
@@ -125,7 +132,7 @@ function cancelPendingFire(): void {
   blockedCell = null;
 }
 
-function showScreen(name: string): void {
+function showScreen(name: string, refreshHomeA2hs = true): void {
   if (name !== 'play') {
     hideResumeNotice();
     cancelPendingFire();
@@ -134,7 +141,8 @@ function showScreen(name: string): void {
     el.hidden = el.dataset.screen !== name;
   });
   const a2hs = document.getElementById('a2hs');
-  if (a2hs) a2hs.hidden = name !== 'home' || sessionStorage.getItem('arrowpath:a2hs') === '1';
+  if (a2hs && name !== 'home') a2hs.hidden = true;
+  else if (a2hs && refreshHomeA2hs) a2hs.hidden = sessionStorage.getItem('arrowpath:a2hs') === '1';
   renderUpdateNotice();
 }
 
@@ -337,34 +345,28 @@ function updateHome(): void {
   scheduleDailyHomeRefresh();
 }
 
-function renderVehicleJam(message = ''): void {
+function renderVehicleJam(message = '', arrivalCue: VehicleJamArrivalCue | null = null): void {
   const queue = document.getElementById('vehicle-jam-queue')!;
   const flow = document.getElementById('vehicle-jam-flow')!;
   const announcement = document.getElementById('vehicle-jam-announcement')!;
   const nextPassenger = vehicleJamState.passengers[0];
+  const remaining = vehicleJamState.passengers.length;
   flow.textContent = vehicleJamState.status === 'won'
-    ? `Solved in ${vehicleJamState.movesMade} departures.`
+    ? `Solved · ${vehicleJamState.movesMade} moves · all passengers aboard`
     : nextPassenger
-      ? `Next passenger: ${VEHICLE_COLOR_LABEL[nextPassenger]} · ${vehicleJamState.passengers.length} waiting`
-      : 'No passengers remain.';
-  const queueFragment = document.createDocumentFragment();
-  vehicleJamState.passengers.forEach((color, index) => {
-    const token = document.createElement('span');
-    token.className = `passenger-token vehicle-${color}`;
-    token.setAttribute('role', 'listitem');
-    token.setAttribute(
-      'aria-label',
-      `${VEHICLE_COLOR_LABEL[color]} passenger${index === 0 ? ', next in line' : ''}`,
-    );
-    token.textContent = VEHICLE_COLOR_LABEL[color];
-    queueFragment.appendChild(token);
-  });
-  queue.replaceChildren(queueFragment);
+      ? `Moves ${vehicleJamState.movesMade} · Next: ${VEHICLE_COLOR_LABEL[nextPassenger]} · ${remaining} waiting`
+      : `Moves ${vehicleJamState.movesMade} · no passengers waiting`;
+  renderPassengerQueue(queue, vehicleJamState);
   announcement.textContent = message;
   renderVehicleJamBoard(
     document.getElementById('vehicle-jam-board')!,
     vehicleJamState,
     selectVehicleJam,
+  );
+  renderVehicleJamParking(
+    document.getElementById('vehicle-jam-parking')!,
+    vehicleJamState,
+    arrivalCue,
   );
 }
 
@@ -372,21 +374,60 @@ function selectVehicleJam(vehicleId: string): void {
   const result = departVehicle(vehicleJamState, vehicleId);
   if (!result.ok) {
     const detail = result.reason === 'path'
-      ? `The route is blocked by the ${VEHICLE_COLOR_LABEL[vehicleJamState.vehicles.find((vehicle) => vehicle.id === result.blockerId)?.color ?? 'coral']} vehicle.`
-      : result.reason === 'passenger' && result.nextPassenger
-        ? `Wait for the ${VEHICLE_COLOR_LABEL[result.nextPassenger]} passenger.`
+      ? `The route is blocked by the ${VEHICLE_COLOR_LABEL[vehicleJamState.vehicles.find((vehicle) => vehicle.id === result.blockerId)?.color ?? 'coral']} bus. No move used.`
+      : result.reason === 'parking'
+        ? 'Both parking bays are full and neither bus can take the next passenger. Restart and try another order. No move used.'
         : result.reason === 'won'
           ? 'This puzzle is already solved.'
-          : 'That vehicle is no longer on the board.';
+          : 'That bus is no longer on the board.';
     document.getElementById('vehicle-jam-announcement')!.textContent = detail;
     return;
   }
 
   vehicleJamState = result.state;
-  const message = result.state.status === 'won'
-    ? `Solved in ${result.state.movesMade} departures. All passengers found a matching ride.`
-    : `${VEHICLE_COLOR_LABEL[result.departed.color]} vehicle departed with its matching passenger.`;
-  renderVehicleJam(message);
+  const messageParts = [`${VEHICLE_COLOR_LABEL[result.dispatched.color]} bus entered Bay ${result.bayIndex + 1}.`];
+  const boardingGroups = new Map<string, { color: keyof typeof VEHICLE_COLOR_LABEL; count: number; seats: number }>();
+  for (const boarding of result.boardings) {
+    const group = boardingGroups.get(boarding.vehicleId) ?? {
+      color: boarding.color,
+      count: 0,
+      seats: boarding.passengersOnboard,
+    };
+    group.count += 1;
+    group.seats = boarding.passengersOnboard;
+    boardingGroups.set(boarding.vehicleId, group);
+  }
+  for (const group of boardingGroups.values()) {
+    const suffix = group.count === 1 ? 'passenger boarded' : 'passengers boarded';
+    messageParts.push(
+      `${group.count} ${VEHICLE_COLOR_LABEL[group.color]} ${suffix} the ${VEHICLE_COLOR_LABEL[group.color]} bus (${group.seats}/${PASSENGER_CAPACITY}).`,
+    );
+  }
+  for (const bus of result.autoDeparted) {
+    messageParts.push(`${VEHICLE_COLOR_LABEL[bus.color]} bus filled ${PASSENGER_CAPACITY}/${PASSENGER_CAPACITY} and drove away.`);
+  }
+  const arrivingBus = result.state.parking.find((bus) => bus?.id === result.dispatched.id);
+  if (arrivingBus && result.boardings.every((boarding) => boarding.vehicleId !== result.dispatched.id)) {
+    const waitingFor = result.state.passengers[0];
+    messageParts.push(
+      `${VEHICLE_COLOR_LABEL[arrivingBus.color]} bus waits at ${arrivingBus.passengersOnboard}/${PASSENGER_CAPACITY}; ${waitingFor ? `${VEHICLE_COLOR_LABEL[waitingFor]} is next.` : 'no passengers remain.'}`,
+    );
+  }
+  if (result.state.status === 'won') {
+    messageParts.splice(0, messageParts.length, `Puzzle solved in ${result.state.movesMade} moves. All passengers boarded and every bus left the lot.`);
+  }
+  const boardedByArrivingBus = result.boardings
+    .filter((boarding) => boarding.vehicleId === result.dispatched.id)
+    .at(-1)?.passengersOnboard ?? 0;
+  const arrivalCue: VehicleJamArrivalCue = {
+    vehicle: result.dispatched,
+    bayIndex: result.bayIndex,
+    droveOff: result.autoDeparted.some((bus) => bus.id === result.dispatched.id),
+    passengersOnboard: result.autoDeparted.some((bus) => bus.id === result.dispatched.id)
+      ? PASSENGER_CAPACITY
+      : boardedByArrivingBus,
+  };
+  renderVehicleJam(messageParts.join(' '), arrivalCue);
   const nextFocus = document.querySelector<HTMLButtonElement>(
     '#vehicle-jam-board button, #btn-vehicle-jam-restart',
   );
@@ -394,14 +435,17 @@ function selectVehicleJam(vehicleId: string): void {
 }
 
 function openVehicleJam(): void {
+  vehicleJamHomeA2hsHidden = document.getElementById('a2hs')?.hidden ?? null;
   renderVehicleJam();
   showScreen('vehicle-jam');
   document.getElementById('vehicle-jam-title')?.focus({ preventScroll: true });
 }
 
 function closeVehicleJam(): void {
-  updateHome();
-  showScreen('home');
+  showScreen('home', false);
+  const a2hs = document.getElementById('a2hs');
+  if (a2hs && vehicleJamHomeA2hsHidden !== null) a2hs.hidden = vehicleJamHomeA2hsHidden;
+  vehicleJamHomeA2hsHidden = null;
   document.getElementById('btn-vehicle-jam')?.focus({ preventScroll: true });
 }
 
