@@ -25,9 +25,30 @@
           <p class="progress-line" id="home-daily-meta">Daily ready</p>
           <button type="button" class="btn primary" id="btn-play">Play</button>
           <button type="button" class="btn secondary" id="btn-daily">Daily Challenge</button>
+          <button type="button" class="btn secondary" id="btn-vehicle-jam">Passenger Jam</button>
           <button type="button" class="btn secondary" id="btn-levels">Level select</button>
           <button type="button" class="btn ghost" id="btn-howto">How to play</button>
           <button type="button" class="btn ghost" id="btn-settings">Settings</button>
+        </div>
+      </section>
+
+      <!-- PASSENGER JAM: a separate in-memory vehicle puzzle -->
+      <section class="screen vehicle-jam-screen" data-screen="vehicle-jam" hidden>
+        <div class="panel vehicle-jam-panel">
+          <header class="subhead">
+            <button type="button" class="icon-btn" id="btn-vehicle-jam-back" aria-label="Back to home">←</button>
+            <h1 id="vehicle-jam-title" tabindex="-1">Passenger Jam</h1>
+          </header>
+          <p class="vehicle-jam-rules">A van can leave only when its route to the board edge is clear <strong>and</strong> it matches the next passenger. Each departure takes one matching passenger.</p>
+          <p id="vehicle-jam-flow" class="vehicle-jam-flow" aria-live="polite" aria-atomic="true"></p>
+          <div id="vehicle-jam-queue" class="vehicle-jam-queue" role="list" aria-label="Passengers waiting in order"></div>
+          <div id="vehicle-jam-board" class="vehicle-board" role="group" aria-label="Four by four vehicle board" aria-describedby="vehicle-jam-help"></div>
+          <p id="vehicle-jam-help" class="sr-only">Choose a vehicle to make it leave the board. Vehicles blocked by another vehicle must wait. The passenger queue must be boarded from left to right.</p>
+          <p id="vehicle-jam-announcement" class="vehicle-jam-announcement" role="status" aria-live="polite" aria-atomic="true"></p>
+          <div class="vehicle-jam-actions">
+            <button type="button" class="btn secondary" id="btn-vehicle-jam-restart">Restart</button>
+            <button type="button" class="btn ghost" id="btn-vehicle-jam-home">Home</button>
+          </div>
         </div>
       </section>
 

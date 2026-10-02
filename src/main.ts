@@ -37,6 +37,13 @@ import {
 } from './ui/level-select';
 import { getWinActionLabel } from './ui/win-action';
 import type { Dir, GameState, LevelDef } from './game/types';
+import {
+  createVehicleJamState,
+  departVehicle,
+  VEHICLE_COLOR_LABEL,
+  type VehicleJamState,
+} from './game/vehicle-jam';
+import { renderVehicleJamBoard } from './ui/vehicle-jam';
 
 type PlayMode = 'campaign' | 'daily';
 
@@ -45,6 +52,7 @@ let engine: Engine | null = null;
 let currentId = 1;
 let playMode: PlayMode = 'campaign';
 let dailyKey: string | null = null;
+let vehicleJamState: VehicleJamState = createVehicleJamState();
 let cellSize = 40;
 let hintCell: { x: number; y: number } | null = null;
 let flashPath: { x: number; y: number }[] | null = null;
@@ -327,6 +335,74 @@ function updateHome(): void {
   dailyButton.disabled = Boolean(rec?.completed);
   dailyButton.textContent = rec?.completed ? 'Daily complete' : 'Daily Challenge';
   scheduleDailyHomeRefresh();
+}
+
+function renderVehicleJam(message = ''): void {
+  const queue = document.getElementById('vehicle-jam-queue')!;
+  const flow = document.getElementById('vehicle-jam-flow')!;
+  const announcement = document.getElementById('vehicle-jam-announcement')!;
+  const nextPassenger = vehicleJamState.passengers[0];
+  flow.textContent = vehicleJamState.status === 'won'
+    ? `Solved in ${vehicleJamState.movesMade} departures.`
+    : nextPassenger
+      ? `Next passenger: ${VEHICLE_COLOR_LABEL[nextPassenger]} · ${vehicleJamState.passengers.length} waiting`
+      : 'No passengers remain.';
+  const queueFragment = document.createDocumentFragment();
+  vehicleJamState.passengers.forEach((color, index) => {
+    const token = document.createElement('span');
+    token.className = `passenger-token vehicle-${color}`;
+    token.setAttribute('role', 'listitem');
+    token.setAttribute(
+      'aria-label',
+      `${VEHICLE_COLOR_LABEL[color]} passenger${index === 0 ? ', next in line' : ''}`,
+    );
+    token.textContent = VEHICLE_COLOR_LABEL[color];
+    queueFragment.appendChild(token);
+  });
+  queue.replaceChildren(queueFragment);
+  announcement.textContent = message;
+  renderVehicleJamBoard(
+    document.getElementById('vehicle-jam-board')!,
+    vehicleJamState,
+    selectVehicleJam,
+  );
+}
+
+function selectVehicleJam(vehicleId: string): void {
+  const result = departVehicle(vehicleJamState, vehicleId);
+  if (!result.ok) {
+    const detail = result.reason === 'path'
+      ? `The route is blocked by the ${VEHICLE_COLOR_LABEL[vehicleJamState.vehicles.find((vehicle) => vehicle.id === result.blockerId)?.color ?? 'coral']} vehicle.`
+      : result.reason === 'passenger' && result.nextPassenger
+        ? `Wait for the ${VEHICLE_COLOR_LABEL[result.nextPassenger]} passenger.`
+        : result.reason === 'won'
+          ? 'This puzzle is already solved.'
+          : 'That vehicle is no longer on the board.';
+    document.getElementById('vehicle-jam-announcement')!.textContent = detail;
+    return;
+  }
+
+  vehicleJamState = result.state;
+  const message = result.state.status === 'won'
+    ? `Solved in ${result.state.movesMade} departures. All passengers found a matching ride.`
+    : `${VEHICLE_COLOR_LABEL[result.departed.color]} vehicle departed with its matching passenger.`;
+  renderVehicleJam(message);
+  const nextFocus = document.querySelector<HTMLButtonElement>(
+    '#vehicle-jam-board button, #btn-vehicle-jam-restart',
+  );
+  nextFocus?.focus({ preventScroll: true });
+}
+
+function openVehicleJam(): void {
+  renderVehicleJam();
+  showScreen('vehicle-jam');
+  document.getElementById('vehicle-jam-title')?.focus({ preventScroll: true });
+}
+
+function closeVehicleJam(): void {
+  updateHome();
+  showScreen('home');
+  document.getElementById('btn-vehicle-jam')?.focus({ preventScroll: true });
 }
 
 function updateSettingsUi(): void {
@@ -1270,6 +1346,15 @@ function wire(): void {
     }
     startDaily();
   });
+  document.getElementById('btn-vehicle-jam')!.addEventListener('click', openVehicleJam);
+  document.getElementById('btn-vehicle-jam-back')!.addEventListener('click', closeVehicleJam);
+  document.getElementById('btn-vehicle-jam-home')!.addEventListener('click', closeVehicleJam);
+  document.getElementById('btn-vehicle-jam-restart')!.addEventListener('click', () => {
+    vehicleJamState = createVehicleJamState();
+    renderVehicleJam('Puzzle restarted.');
+    document.querySelector<HTMLButtonElement>('#vehicle-jam-board button')
+      ?.focus({ preventScroll: true });
+  });
   document.getElementById('btn-levels')!.addEventListener('click', () => {
     openLevelSelect('home', document.getElementById('btn-levels')!);
   });
@@ -1400,6 +1485,9 @@ function wire(): void {
         } else if (screen === 'settings') {
           event.preventDefault();
           closeSettings();
+        } else if (screen === 'vehicle-jam') {
+          event.preventDefault();
+          closeVehicleJam();
         }
       }
       return;
