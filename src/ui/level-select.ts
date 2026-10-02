@@ -25,6 +25,27 @@ export function getCampaignLevelToHighlight({
   return Math.min(unlockedLevel, totalLevels);
 }
 
+interface CampaignLevelAccessibleLabelOptions {
+  levelId: number;
+  unlocked: boolean;
+  cleared: boolean;
+  current: boolean;
+}
+
+/** Describe a Campaign level's progress state for assistive technology. */
+export function getCampaignLevelAccessibleLabel({
+  levelId,
+  unlocked,
+  cleared,
+  current,
+}: CampaignLevelAccessibleLabelOptions): string {
+  if (!unlocked) return `Level ${levelId}, locked`;
+  if (current && cleared) return `Level ${levelId}, current, cleared`;
+  if (current) return `Level ${levelId}, current`;
+  if (cleared) return `Level ${levelId}, cleared`;
+  return `Level ${levelId}, available`;
+}
+
 /**
  * Return the adjacent level in the visible row-major grid, without wrapping
  * across rows or moving focus onto a locked or nonexistent level.

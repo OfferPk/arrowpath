@@ -32,6 +32,7 @@ import { manageDialogKeydown } from './ui/dialog';
 import { registerSW } from 'virtual:pwa-register';
 import { getUpdateNoticePresentation } from './ui/pwa-update';
 import {
+  getCampaignLevelAccessibleLabel,
   getCampaignLevelGridTarget,
   getCampaignLevelToHighlight,
 } from './ui/level-select';
@@ -1249,11 +1250,20 @@ function buildLevelSelect(): void {
     btn.className = 'level-btn';
     btn.textContent = String(level.id);
     const locked = level.id > progress.unlocked;
+    const cleared = progress.cleared.includes(level.id);
+    const current = level.id === campaignLevelToHighlight;
+    btn.setAttribute(
+      'aria-label',
+      getCampaignLevelAccessibleLabel({
+        levelId: level.id,
+        unlocked: !locked,
+        cleared,
+        current,
+      }),
+    );
     if (locked) btn.classList.add('locked');
-    if (progress.cleared.includes(level.id)) btn.classList.add('cleared');
-    if (level.id === campaignLevelToHighlight) {
-      btn.classList.add('current');
-    }
+    if (cleared) btn.classList.add('cleared');
+    if (current) btn.classList.add('current');
     btn.dataset.levelId = String(level.id);
     btn.disabled = locked;
     btn.tabIndex = !locked && level.id === campaignLevelToHighlight ? 0 : -1;

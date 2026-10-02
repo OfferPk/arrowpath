@@ -1,8 +1,25 @@
 import { describe, expect, it } from 'vitest';
 import {
+  getCampaignLevelAccessibleLabel,
   getCampaignLevelGridTarget,
   getCampaignLevelToHighlight,
 } from '../src/ui/level-select';
+
+describe('campaign level-picker accessible labels', () => {
+  const label = (levelId: number, unlocked: boolean, cleared = false, current = false) =>
+    getCampaignLevelAccessibleLabel({ levelId, unlocked, cleared, current });
+
+  it('announces progress and availability without relying on visual styling', () => {
+    expect(label(1, true, true)).toBe('Level 1, cleared');
+    expect(label(2, true, false, true)).toBe('Level 2, current');
+    expect(label(3, true)).toBe('Level 3, available');
+    expect(label(4, false)).toBe('Level 4, locked');
+  });
+
+  it('preserves both statuses when the current level was previously cleared', () => {
+    expect(label(5, true, true, true)).toBe('Level 5, current, cleared');
+  });
+});
 
 describe('campaign level-picker highlight', () => {
   it('points to the Continue destination unless an unfinished campaign run should resume', () => {
