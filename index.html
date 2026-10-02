@@ -12,8 +12,8 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="manifest" href="/arrowpath/manifest.webmanifest" />
     <title>ArrowPath</title>
-    <script type="module" crossorigin src="/arrowpath/assets/index-DuMNmXpE.js"></script>
-    <link rel="stylesheet" crossorigin href="/arrowpath/assets/index-D7JJBgT9.css">
+    <script type="module" crossorigin src="/arrowpath/assets/index-EJg_ZM2T.js"></script>
+    <link rel="stylesheet" crossorigin href="/arrowpath/assets/index-Cz0FJC2b.css">
   </head>
   <body>
     <main id="app">
@@ -27,9 +27,33 @@
           <p class="progress-line" id="home-daily-meta">Daily ready</p>
           <button type="button" class="btn primary" id="btn-play">Play</button>
           <button type="button" class="btn secondary" id="btn-daily">Daily Challenge</button>
+          <button type="button" class="btn secondary" id="btn-vehicle-jam">Passenger Jam</button>
           <button type="button" class="btn secondary" id="btn-levels">Level select</button>
           <button type="button" class="btn ghost" id="btn-howto">How to play</button>
           <button type="button" class="btn ghost" id="btn-settings">Settings</button>
+        </div>
+      </section>
+
+      <!-- PASSENGER JAM: a separate in-memory vehicle puzzle -->
+      <section class="screen vehicle-jam-screen" data-screen="vehicle-jam" hidden>
+        <div class="panel vehicle-jam-panel">
+          <header class="subhead">
+            <button type="button" class="icon-btn" id="btn-vehicle-jam-back" aria-label="Back to home">←</button>
+            <h1 id="vehicle-jam-title" tabindex="-1">Passenger Jam</h1>
+          </header>
+          <p class="vehicle-jam-rules">Tap a bus with a clear route to park it. Passengers board parked buses by color, from the queue front. Each bus holds two and leaves when full; if both bays jam, restart and try a new order.</p>
+          <p id="vehicle-jam-flow" class="vehicle-jam-flow" aria-live="polite" aria-atomic="true">Moves 0 · 16 passengers waiting</p>
+          <p class="vehicle-jam-section-label">Passenger queue <span>board from left to right</span></p>
+          <div id="vehicle-jam-queue" class="vehicle-jam-queue" role="list" aria-label="Passengers waiting in order"></div>
+          <div id="vehicle-jam-board" class="vehicle-board" role="group" aria-label="Six by six bus board" aria-describedby="vehicle-jam-help"></div>
+          <p class="vehicle-jam-section-label parking-heading">Parking bays <span>matching passengers board automatically</span></p>
+          <div id="vehicle-jam-parking" class="vehicle-jam-parking" role="list" aria-label="Two parking bays"></div>
+          <p id="vehicle-jam-help" class="sr-only">Tap any bus whose route to the board edge is clear to send it to an open parking bay. A bus does not need to match the next passenger to park. Passengers board only when the queue-front color matches a parked bus. Each bus holds two passengers and leaves automatically when full. If both bays fill with buses that cannot take the next passenger, restart and try another dispatch order.</p>
+          <p id="vehicle-jam-announcement" class="vehicle-jam-announcement" role="status" aria-live="polite" aria-atomic="true"></p>
+          <div class="vehicle-jam-actions">
+            <button type="button" class="btn secondary" id="btn-vehicle-jam-restart">Restart</button>
+            <button type="button" class="btn ghost" id="btn-vehicle-jam-home">Home</button>
+          </div>
         </div>
       </section>
 
