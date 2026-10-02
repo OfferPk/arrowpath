@@ -26,7 +26,11 @@ import {
 } from './ads/stubs';
 import { completeLevelWithoutWaitingForAd } from './game/completion';
 import { drawBoard, resizeCanvas } from './ui/canvas';
-import { describeBoard, describeBoardCell } from './ui/accessibility';
+import {
+  describeBoard,
+  describeBoardCell,
+  describeUndoResult,
+} from './ui/accessibility';
 import { describeRestoredRunStatus } from './ui/resume-status';
 import { manageDialogKeydown } from './ui/dialog';
 import { registerSW } from 'virtual:pwa-register';
@@ -36,6 +40,7 @@ import {
   getCampaignLevelToHighlight,
 } from './ui/level-select';
 import { getWinActionLabel } from './ui/win-action';
+import { focusUndoCell, undoAndGetFocusIndex } from './ui/undo-focus';
 import type { Dir, GameState, LevelDef } from './game/types';
 import {
   createVehicleJamState,
@@ -1158,19 +1163,26 @@ function restartPuzzle(): void {
   void showInterstitial('retry');
 }
 
+function undoWithFocus(forceExtra = false): boolean {
+  if (!engine) return false;
+  const focusIndex = undoAndGetFocusIndex(engine, activeCellIndex, forceExtra);
+  if (focusIndex === null) return false;
+  activeCellIndex = focusIndex;
+  return true;
+}
+
 function tryUndo(): void {
   if (!engine || moveAnimation) return;
   if (!engine.canUndo()) return;
   const s = state();
   if (s.undosLeft > 0) {
-    engine.undo(false);
+    if (!undoWithFocus(false)) return;
     hideOverlays();
     hintCell = null;
     render();
     persistActivePuzzle();
-    boardAccess.querySelector<HTMLButtonElement>(`[data-cell-index="${activeCellIndex}"]`)
-      ?.focus({ preventScroll: true });
-    announceBoard(describeBoard(state()));
+    focusUndoCell(boardAccess, activeCellIndex);
+    announceBoard(describeUndoResult(state()));
     return;
   }
   rewardAction = 'undo';
@@ -1212,12 +1224,13 @@ async function confirmReward(): Promise<void> {
         : 'No safe arrow is available for a hint.',
     );
   } else if (action === 'undo') {
-    engine.undo(true);
+    undoWithFocus(true);
     hideOverlays();
     hintCell = null;
     render();
     persistActivePuzzle();
-    announceBoard(describeBoard(state()));
+    focusUndoCell(boardAccess, activeCellIndex);
+    announceBoard(describeUndoResult(state()));
   }
 }
 

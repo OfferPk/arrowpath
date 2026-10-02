@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { createState } from '../src/game/engine';
 import type { LevelDef } from '../src/game/types';
-import { describeBoard, describeBoardCell } from '../src/ui/accessibility';
+import {
+  describeBoard,
+  describeBoardCell,
+  describeUndoResult,
+} from '../src/ui/accessibility';
 
 const LEVEL: LevelDef = {
   id: 7,
@@ -50,5 +54,11 @@ describe('spoken puzzle board descriptions', () => {
     expect(describeBoard(state)).toContain('Level 7 puzzle board. 2 rows by 3 columns.');
     expect(describeBoard(state)).toContain('2 arrows remaining; 1 wall.');
     expect(describeBoard(state)).toContain('arrow keys');
+  });
+
+  it('confirms an undo before summarizing the restored board', () => {
+    expect(describeUndoResult(state)).toBe(
+      'Undo complete. Level 7 puzzle board. 2 rows by 3 columns. 2 arrows remaining; 1 wall. Use the arrow keys to move between cells. Press Enter or Space to fire an arrow.',
+    );
   });
 });
